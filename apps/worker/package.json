@@ -17,6 +17,7 @@
     "@market-sentinel/domain": "workspace:*",
     "@market-sentinel/etoro-client": "workspace:*",
     "@market-sentinel/indicators": "workspace:*",
+    "@market-sentinel/market-structure": "workspace:*",
     "@market-sentinel/observability": "workspace:*",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.44.5",

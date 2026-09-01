@@ -44,6 +44,24 @@ export type TradingStatus = "ACTIVE" | "COOLDOWN" | "SESSION_BLOCKED" | "NEWS_BL
 
 export type StreamFreshness = "LIVE" | "DELAYED" | "STALE" | "DISCONNECTED";
 
+export type PivotType = "HIGH" | "LOW";
+
+export type SwingLabel = "HH" | "HL" | "LH" | "LL" | "EH" | "EL";
+
+export type StructureLabel = "HH_HL" | "LH_LL" | "MIXED";
+
+export type Trend = "STRONG_BULL" | "BULL" | "RANGE" | "BEAR" | "STRONG_BEAR";
+
+export type Volatility = "LOW" | "NORMAL" | "HIGH" | "EXTREME";
+
+export type Location = "AT_SUPPORT" | "AT_RESISTANCE" | "MID_RANGE" | "EXTENDED_UP" | "EXTENDED_DOWN";
+
+export type ZoneType = "SUPPORT" | "RESISTANCE" | "BOTH";
+
+export type ZoneSource = "AUTO_PIVOT" | "USER_MANUAL" | "PRIOR_DAY" | "PRIOR_WEEK" | "PSYCHOLOGICAL";
+
+export type ZoneStatus = "ACTIVE" | "BROKEN" | "FLIPPED" | "EXPIRED";
+
 export type DomainEventType =
   | "MARKET_TICK_RECEIVED"
   | "CANDLE_UPDATED"

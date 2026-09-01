@@ -22,6 +22,7 @@ import {
   type InstrumentRef,
 } from "./candle-store.js";
 import { createSerialQueue } from "./serial-queue.js";
+import { evaluateStructure } from "./structure-store.js";
 
 const logger = createLogger("worker");
 
@@ -351,6 +352,12 @@ async function applyTickToBuilders(args: {
           redis: args.redis,
           symbol,
           instrumentId: instrument.id,
+          timeframe,
+        });
+        await evaluateStructure({
+          db: args.db,
+          redis: args.redis,
+          instrument,
           timeframe,
         });
       }

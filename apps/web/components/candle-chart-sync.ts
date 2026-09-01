@@ -1,4 +1,4 @@
-import type { CandleDto } from "@market-sentinel/contracts";
+import type { CandleDto, IndicatorSnapshotDto, PriceZoneDto } from "@market-sentinel/contracts";
 
 export type ChartBar = {
   time: number;
@@ -34,4 +34,43 @@ export function decideChartSync(args: {
     return { mode: "setData", fitContent: true };
   }
   return { mode: "updateLast", fitContent: false };
+}
+
+export type OverlayLine = {
+  id: string;
+  price: number;
+  title: string;
+  tone: "support" | "resistance" | "both" | "broken" | "ema" | "bb";
+};
+
+export function overlayLines(args: { zones: PriceZoneDto[]; indicators: IndicatorSnapshotDto | null }): OverlayLine[] {
+  const lines: OverlayLine[] = args.zones.flatMap((zone) => {
+    const tone =
+      zone.status !== "ACTIVE" ? "broken" : zone.type === "SUPPORT" ? "support" : zone.type === "RESISTANCE" ? "resistance" : "both";
+    return [
+      {
+        id: `${zone.id}:mid`,
+        price: Number(zone.midpoint),
+        title: `${zone.type} ${zone.source}`,
+        tone,
+      },
+    ];
+  });
+  const indicators = args.indicators;
+  if (indicators?.ema20) {
+    lines.push({ id: "ema20", price: Number(indicators.ema20), title: "EMA 20", tone: "ema" });
+  }
+  if (indicators?.ema50) {
+    lines.push({ id: "ema50", price: Number(indicators.ema50), title: "EMA 50", tone: "ema" });
+  }
+  if (indicators?.bbUpper20x2) {
+    lines.push({ id: "bbUpper", price: Number(indicators.bbUpper20x2), title: "BB upper", tone: "bb" });
+  }
+  if (indicators?.bbBasis20) {
+    lines.push({ id: "bbBasis", price: Number(indicators.bbBasis20), title: "BB basis", tone: "bb" });
+  }
+  if (indicators?.bbLower20x2) {
+    lines.push({ id: "bbLower", price: Number(indicators.bbLower20x2), title: "BB lower", tone: "bb" });
+  }
+  return lines;
 }

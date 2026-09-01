@@ -1,6 +1,7 @@
-import type { AccountResponse, MarketsResponse } from "@market-sentinel/contracts";
+import type { AccountResponse, MarketRegimeDto, MarketsResponse, PriceZoneDto } from "@market-sentinel/contracts";
 import { REDIS_KEYS } from "@market-sentinel/contracts";
 import { WATCHLIST } from "@market-sentinel/domain";
+import { Decimal } from "decimal.js";
 import { Redis } from "ioredis";
 
 export type QuoteRecord = {
@@ -31,6 +32,11 @@ export function disconnectedMarkets(): MarketsResponse {
       dailyChangePct: null,
       lastQuoteAt: null,
       freshness: "DISCONNECTED" as const,
+      regime4h: null,
+      structure1h: null,
+      momentum15m: null,
+      closestSupport: null,
+      closestResistance: null,
     })),
   };
 }
@@ -59,6 +65,7 @@ export async function readMarkets(redis: Redis, staleAfterMs: number): Promise<M
     const quote = raw ? (JSON.parse(raw) as QuoteRecord) : null;
     const lastQuoteAt = quote?.lastQuoteAt ?? null;
     const freshness = freshnessFrom(lastQuoteAt, stream?.streamStatus ?? "DISCONNECTED", staleAfterMs);
+    const structure = await readStructureSnapshot({ redis, symbol, last: quote?.last ?? null });
     markets.push({
       symbol,
       etoroInstrumentId: quote?.etoroInstrumentId ?? null,
@@ -70,6 +77,7 @@ export async function readMarkets(redis: Redis, staleAfterMs: number): Promise<M
       dailyChangePct: quote?.dailyChangePct ?? null,
       lastQuoteAt,
       freshness,
+      ...structure,
     });
   }
   return {
@@ -86,6 +94,48 @@ export async function readAccount(redis: Redis): Promise<AccountResponse> {
     return emptyAccount();
   }
   return JSON.parse(raw) as AccountResponse;
+}
+
+export async function readStructureSnapshot(args: {
+  redis: Redis;
+  symbol: string;
+  last: string | null;
+}): Promise<{
+  regime4h: string | null;
+  structure1h: string | null;
+  momentum15m: string | null;
+  closestSupport: string | null;
+  closestResistance: string | null;
+}> {
+  const regimeRaw = await args.redis.get(REDIS_KEYS.regime(args.symbol));
+  const zonesRaw = await args.redis.get(REDIS_KEYS.zones(args.symbol));
+  const regimes = regimeRaw ? (JSON.parse(regimeRaw) as Partial<Record<"15m" | "1h" | "4h", MarketRegimeDto>>) : {};
+  const zones = zonesRaw ? (JSON.parse(zonesRaw) as PriceZoneDto[]) : [];
+  const active = zones.filter((zone) => zone.status === "ACTIVE");
+  const supports = active.filter((zone) => zone.type === "SUPPORT" || zone.type === "BOTH");
+  const resistances = active.filter((zone) => zone.type === "RESISTANCE" || zone.type === "BOTH");
+  const timing = regimes["15m"];
+  return {
+    regime4h: regimes["4h"]?.trend ?? null,
+    structure1h: regimes["1h"]?.structure ?? null,
+    momentum15m: timing?.location ?? timing?.structure ?? null,
+    closestSupport: closestMidpoint({ last: args.last, zones: supports }),
+    closestResistance: closestMidpoint({ last: args.last, zones: resistances }),
+  };
+}
+
+function closestMidpoint(args: { last: string | null; zones: PriceZoneDto[] }): string | null {
+  if (args.zones.length === 0) {
+    return null;
+  }
+  if (!args.last) {
+    return args.zones[0]?.midpoint ?? null;
+  }
+  const last = new Decimal(args.last);
+  return args.zones
+    .slice()
+    .sort((left, right) => new Decimal(left.midpoint).minus(last).abs().cmp(new Decimal(right.midpoint).minus(last).abs()))[0]
+    ?.midpoint ?? null;
 }
 
 function freshnessFrom(

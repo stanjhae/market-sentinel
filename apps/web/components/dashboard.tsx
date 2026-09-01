@@ -137,6 +137,26 @@ export function Dashboard({ symbols }: DashboardProps) {
                   <p className="text-foreground">{quote?.dailyChangePct ?? "—"}</p>
                 </div>
               </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 font-mono text-xs text-muted-foreground">
+                <div>
+                  <p>4H regime</p>
+                  <p className="text-foreground">{quote?.regime4h ?? "—"}</p>
+                </div>
+                <div>
+                  <p>1H structure</p>
+                  <p className="text-foreground">{quote?.structure1h ?? "—"}</p>
+                </div>
+                <div>
+                  <p>15m momentum</p>
+                  <p className="text-foreground">{quote?.momentum15m ?? "—"}</p>
+                </div>
+                <div>
+                  <p>Closest S/R</p>
+                  <p className="text-foreground">
+                    {quote?.closestSupport ?? "—"} / {quote?.closestResistance ?? "—"}
+                  </p>
+                </div>
+              </div>
             </Card>
           );
         })}

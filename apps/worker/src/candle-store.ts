@@ -18,6 +18,7 @@ import { computeIndicatorSnapshot } from "@market-sentinel/indicators";
 import { and, desc, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
+import { evaluateStructure } from "./structure-store.js";
 
 export const BACKFILL_CANDLE_COUNT = 500;
 export const RECONCILE_CANDLE_COUNT = 20;
@@ -274,6 +275,13 @@ export async function backfillInstrument(args: {
       instrumentId: args.instrument.id,
       timeframe,
     });
+    await evaluateStructure({
+      db: args.db,
+      redis: args.redis,
+      instrument: args.instrument,
+      timeframe,
+      now,
+    });
     builders.set(timeframe, builder);
   }
   return builders;
@@ -316,6 +324,13 @@ export async function reconcileInstrument(args: {
           symbol: args.instrument.symbol,
           instrumentId: args.instrument.id,
           timeframe,
+        });
+        await evaluateStructure({
+          db: args.db,
+          redis: args.redis,
+          instrument: args.instrument,
+          timeframe,
+          now,
         });
       }
     }
