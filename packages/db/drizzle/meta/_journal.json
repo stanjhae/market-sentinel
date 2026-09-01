@@ -15,6 +15,13 @@
       "when": 1756750000000,
       "tag": "0001_candles",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1756760000000,
+      "tag": "0002_structure",
+      "breakpoints": true
     }
   ]
 }

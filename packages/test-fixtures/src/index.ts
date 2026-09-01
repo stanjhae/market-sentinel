@@ -22,6 +22,14 @@ export const RSI_FIXTURE_CLOSES = [
   "45.64",
 ] as const;
 
+export {
+  bearishStructureFixture,
+  bullishStructureFixture,
+  structureBar,
+  swingHighFixture,
+} from "./structure.js";
+export type { FixtureBar, FixtureTimeframe } from "./structure.js";
+
 export const FIXTURE_NAMES = [
   "breakdown-retest",
   "false-breakdown",

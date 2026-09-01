@@ -16,7 +16,9 @@
     "@market-sentinel/contracts": "workspace:*",
     "@market-sentinel/db": "workspace:*",
     "@market-sentinel/domain": "workspace:*",
+    "@market-sentinel/market-structure": "workspace:*",
     "@market-sentinel/observability": "workspace:*",
+    "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.44.5",
     "fastify": "^5.5.0",
     "ioredis": "^5.7.0"

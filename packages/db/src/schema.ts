@@ -88,3 +88,54 @@ export const auditLogs = pgTable("audit_logs", {
   instrumentId: text("instrument_id"),
   payloadJson: jsonb("payload_json"),
 });
+
+export const pivots = pgTable(
+  "pivots",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull(),
+    timeframe: text("timeframe").notNull(),
+    openTimeUtc: timestamp("open_time_utc", { withTimezone: true }).notNull(),
+    type: text("type").notNull(),
+    price: text("price").notNull(),
+    leftBars: integer("left_bars").notNull(),
+    rightBars: integer("right_bars").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("pivots_instrument_tf_open_type_idx").on(table.instrumentId, table.timeframe, table.openTimeUtc, table.type)],
+);
+
+export const priceZones = pgTable("price_zones", {
+  id: text("id").primaryKey(),
+  instrumentId: text("instrument_id").notNull(),
+  timeframe: text("timeframe").notNull(),
+  type: text("type").notNull(),
+  source: text("source").notNull(),
+  lowerBound: text("lower_bound").notNull(),
+  upperBound: text("upper_bound").notNull(),
+  midpoint: text("midpoint").notNull(),
+  strengthScore: integer("strength_score").notNull(),
+  touchCount: integer("touch_count").notNull(),
+  lastTouchedAt: timestamp("last_touched_at", { withTimezone: true }),
+  status: text("status").notNull(),
+  metadataJson: jsonb("metadata_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const marketRegimes = pgTable(
+  "market_regimes",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull(),
+    timeframe: text("timeframe").notNull(),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    trend: text("trend").notNull(),
+    structure: text("structure").notNull(),
+    volatility: text("volatility").notNull(),
+    location: text("location").notNull(),
+    confidence: integer("confidence").notNull(),
+    evidenceJson: jsonb("evidence_json"),
+  },
+  (table) => [uniqueIndex("market_regimes_instrument_tf_ts_idx").on(table.instrumentId, table.timeframe, table.timestamp)],
+);

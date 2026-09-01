@@ -53,9 +53,15 @@ importers:
       '@market-sentinel/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@market-sentinel/market-structure':
+        specifier: workspace:*
+        version: link:../../packages/market-structure
       '@market-sentinel/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(postgres@3.4.9)
@@ -151,6 +157,9 @@ importers:
       '@market-sentinel/indicators':
         specifier: workspace:*
         version: link:../../packages/indicators
+      '@market-sentinel/market-structure':
+        specifier: workspace:*
+        version: link:../../packages/market-structure
       '@market-sentinel/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -240,7 +249,21 @@ importers:
         specifier: workspace:*
         version: link:../test-fixtures
 
-  packages/market-structure: {}
+  packages/market-structure:
+    dependencies:
+      '@market-sentinel/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@market-sentinel/indicators':
+        specifier: workspace:*
+        version: link:../indicators
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
+    devDependencies:
+      '@market-sentinel/test-fixtures':
+        specifier: workspace:*
+        version: link:../test-fixtures
 
   packages/observability:
     dependencies:

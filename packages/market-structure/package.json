@@ -10,5 +10,13 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@market-sentinel/domain": "workspace:*",
+    "@market-sentinel/indicators": "workspace:*",
+    "decimal.js": "^10.6.0"
+  },
+  "devDependencies": {
+    "@market-sentinel/test-fixtures": "workspace:*"
   }
 }

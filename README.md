@@ -82,7 +82,7 @@ Four versioned detectors are planned: breakdown/retest, liquidity sweep + reclai
 0. Repo foundation
 1. eToro connectivity
 2. Candles and indicators — `/markets/:symbol` chart, 15m/1h/4h storage, RSI/ATR/EMA/BB
-3. Structure and zones
+3. Structure and zones — pivots, HH/HL/LH/LL, auto/manual zones, regime, MultiTimeframeContext
 4. Signals
 5. Alerts
 6. Account / risk / Trade Gate

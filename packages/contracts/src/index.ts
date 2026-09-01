@@ -13,6 +13,11 @@ export const marketQuoteSchema = z.object({
   dailyChangePct: z.string().nullable(),
   lastQuoteAt: z.string().nullable(),
   freshness: z.enum(["LIVE", "DELAYED", "STALE", "DISCONNECTED"]),
+  regime4h: z.string().nullable(),
+  structure1h: z.string().nullable(),
+  momentum15m: z.string().nullable(),
+  closestSupport: z.string().nullable(),
+  closestResistance: z.string().nullable(),
 });
 
 export const marketsResponseSchema = z.object({
@@ -66,6 +71,67 @@ export const indicatorSnapshotDtoSchema = z.object({
   rollingVolatility: z.string().nullable(),
 });
 
+export const priceZoneDtoSchema = z.object({
+  id: z.string(),
+  instrumentId: z.string(),
+  symbol: z.string(),
+  timeframe: z.enum(["15m", "1h", "4h"]),
+  type: z.enum(["SUPPORT", "RESISTANCE", "BOTH"]),
+  source: z.enum(["AUTO_PIVOT", "USER_MANUAL", "PRIOR_DAY", "PRIOR_WEEK", "PSYCHOLOGICAL"]),
+  lowerBound: z.string(),
+  upperBound: z.string(),
+  midpoint: z.string(),
+  strengthScore: z.number(),
+  touchCount: z.number().int(),
+  lastTouchedAt: z.string().nullable(),
+  status: z.enum(["ACTIVE", "BROKEN", "FLIPPED", "EXPIRED"]),
+  metadataJson: z.record(z.unknown()),
+});
+
+export const marketRegimeDtoSchema = z.object({
+  instrumentId: z.string(),
+  timeframe: z.enum(["15m", "1h", "4h"]),
+  timestamp: z.string(),
+  trend: z.enum(["STRONG_BULL", "BULL", "RANGE", "BEAR", "STRONG_BEAR"]),
+  structure: z.enum(["HH_HL", "LH_LL", "MIXED"]),
+  volatility: z.enum(["LOW", "NORMAL", "HIGH", "EXTREME"]),
+  location: z.enum(["AT_SUPPORT", "AT_RESISTANCE", "MID_RANGE", "EXTENDED_UP", "EXTENDED_DOWN"]),
+  confidence: z.number().int(),
+  evidenceJson: z.record(z.unknown()),
+});
+
+export const timingFlagsSchema = z.object({
+  rejection: z.boolean(),
+  reclaim: z.boolean(),
+  failedRetest: z.boolean(),
+  engulfingImpulse: z.boolean(),
+  rsiReset: z.boolean(),
+  bbMeanReclaim: z.boolean(),
+  bbMeanLoss: z.boolean(),
+});
+
+export const setupFlagsSchema = z.object({
+  continuation: z.boolean(),
+  reversal: z.boolean(),
+  breakout: z.boolean(),
+  breakdown: z.boolean(),
+  pullback: z.boolean(),
+  consolidation: z.boolean(),
+  structureTransition: z.boolean(),
+});
+
+export const multiTimeframeContextSchema = z.object({
+  context4h: z.object({
+    primaryTrend: marketRegimeDtoSchema.shape.trend.nullable(),
+    majorSupport: z.string().nullable(),
+    majorResistance: z.string().nullable(),
+    extended: z.boolean(),
+    volatility: marketRegimeDtoSchema.shape.volatility.nullable(),
+  }),
+  setup1h: setupFlagsSchema,
+  timing15m: timingFlagsSchema,
+});
+
 export const candlesResponseSchema = z.object({
   available: z.boolean(),
   symbol: z.string(),
@@ -83,8 +149,17 @@ export const marketContextResponseSchema = z.object({
       currentCandle: candleDtoSchema.nullable(),
       lastFinalCandle: candleDtoSchema.nullable(),
       indicators: indicatorSnapshotDtoSchema.nullable(),
+      regime: marketRegimeDtoSchema.nullable(),
     }),
   ),
+  zones: z.array(priceZoneDtoSchema),
+  multiTimeframe: multiTimeframeContextSchema.nullable(),
+});
+
+export const zonesResponseSchema = z.object({
+  available: z.boolean(),
+  symbol: z.string(),
+  zones: z.array(priceZoneDtoSchema),
 });
 
 export const healthLiveSchema = z.object({
@@ -124,3 +199,7 @@ export type CandleDto = z.infer<typeof candleDtoSchema>;
 export type IndicatorSnapshotDto = z.infer<typeof indicatorSnapshotDtoSchema>;
 export type CandlesResponse = z.infer<typeof candlesResponseSchema>;
 export type MarketContextResponse = z.infer<typeof marketContextResponseSchema>;
+export type PriceZoneDto = z.infer<typeof priceZoneDtoSchema>;
+export type MarketRegimeDto = z.infer<typeof marketRegimeDtoSchema>;
+export type MultiTimeframeContextDto = z.infer<typeof multiTimeframeContextSchema>;
+export type ZonesResponse = z.infer<typeof zonesResponseSchema>;
