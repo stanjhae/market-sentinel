@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasEtoroCredentials, parseEnv } from "./env.js";
+import { hasEtoroCredentials, hasTelegramCredentials, parseEnv } from "./env.js";
 
 const validBase = {
   DATABASE_URL: "postgres://sentinel:sentinel@localhost:5432/market_sentinel",
@@ -27,5 +27,17 @@ describe("parseEnv", () => {
   it("rejects NEXT_PUBLIC eToro keys as env contract fields", () => {
     const env = parseEnv(validBase);
     expect("NEXT_PUBLIC_ETORO_API_KEY" in env).toBe(false);
+  });
+
+  it("treats empty Telegram credentials as missing and never NEXT_PUBLIC", () => {
+    const env = parseEnv({
+      ...validBase,
+      TELEGRAM_BOT_TOKEN: "",
+      TELEGRAM_CHAT_ID: "",
+    });
+    expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    expect(env.TELEGRAM_CHAT_ID).toBeUndefined();
+    expect("NEXT_PUBLIC_TELEGRAM_BOT_TOKEN" in env).toBe(false);
+    expect(hasTelegramCredentials({ env })).toBe(false);
   });
 });

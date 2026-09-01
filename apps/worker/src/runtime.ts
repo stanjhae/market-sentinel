@@ -1,7 +1,13 @@
 import { hasEtoroCredentials, type Env } from "@market-sentinel/config";
 import { REDIS_KEYS } from "@market-sentinel/contracts";
 import { createDb, instruments, auditLogs, accountSnapshots } from "@market-sentinel/db";
-import { TIMEFRAMES, WATCHLIST, type CanonicalSymbol, type Timeframe } from "@market-sentinel/domain";
+import {
+  TIMEFRAMES,
+  WATCHLIST,
+  shouldPublishStreamStatus,
+  type CanonicalSymbol,
+  type Timeframe,
+} from "@market-sentinel/domain";
 import { CandleBuilder, tickPrice } from "@market-sentinel/domain/candle";
 import {
   EtoroMarketStream,
@@ -22,6 +28,7 @@ import {
   type InstrumentRef,
 } from "./candle-store.js";
 import { createSerialQueue } from "./serial-queue.js";
+import { maybeAlertStreamStale, publishDomainEvent } from "./alert-store.js";
 import { evaluateSignals } from "./signal-store.js";
 import { evaluateStructure } from "./structure-store.js";
 
@@ -86,6 +93,8 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
   const instrumentsBySymbol = new Map<CanonicalSymbol, InstrumentRef>();
   const builders = new Map<string, CandleBuilder>();
   const writeQueues = new Map<CanonicalSymbol, ReturnType<typeof createSerialQueue>>();
+  const telegram = { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID };
+  let previousStreamStatus: string | null = null;
 
   for (const symbol of WATCHLIST) {
     const result = await resolveWatchlistInstrument({ client: rest, symbol });
@@ -194,18 +203,39 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
               instrumentsBySymbol,
               builders,
               staleAfterMs: env.STALE_TICK_MS,
+              telegram,
             }),
         });
       },
       onStatus: (status) => {
-        void redis.set(
-          REDIS_KEYS.stream,
-          JSON.stringify({
-            streamStatus: mapStatus(status),
-            lastQuoteAt: stream.getLastEventAt()?.toISOString() ?? null,
-            reconnectCount: stream.getReconnectCount(),
-          }),
-        );
+        const streamStatus = mapStatus(status);
+        void (async () => {
+          await redis.set(
+            REDIS_KEYS.stream,
+            JSON.stringify({
+              streamStatus,
+              lastQuoteAt: stream.getLastEventAt()?.toISOString() ?? null,
+              reconnectCount: stream.getReconnectCount(),
+            }),
+          );
+          if (shouldPublishStreamStatus({ previousStatus: previousStreamStatus, nextStatus: streamStatus })) {
+            await publishDomainEvent({
+              redis,
+              event: {
+                type: "stream",
+                payload: {
+                  streamStatus,
+                  lastQuoteAt: stream.getLastEventAt()?.toISOString() ?? null,
+                },
+              },
+            });
+          }
+          await maybeAlertStreamStale({
+            context: { db: dbPair.db, redis, telegram },
+            nextStatus: streamStatus,
+          });
+          previousStreamStatus = streamStatus;
+        })();
       },
     },
   );
@@ -253,6 +283,7 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
           redis,
           rest,
           instrument,
+          telegram,
         });
         await evaluateSignals({
           db: dbPair.db,
@@ -260,6 +291,7 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
           instrument,
           staleAfterMs: env.STALE_TICK_MS,
           streamGate: "historical",
+          telegram,
         });
         for (const timeframe of TIMEFRAMES) {
           const builder = created.get(timeframe);
@@ -286,12 +318,14 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
           redis,
           rest,
           instrument,
+          telegram,
         });
         await evaluateSignals({
           db: dbPair.db,
           redis,
           instrument,
           staleAfterMs: env.STALE_TICK_MS,
+          telegram,
         });
         if (revisions > 0) {
           logger.info({ symbol: instrument.symbol, revisions }, "REST candle reconcile revised finals");
@@ -342,6 +376,7 @@ async function applyTickToBuilders(args: {
   instrumentsBySymbol: Map<CanonicalSymbol, InstrumentRef>;
   builders: Map<string, CandleBuilder>;
   staleAfterMs: number;
+  telegram?: { botToken?: string; chatId?: string };
 }) {
   const symbol = args.idToSymbol.get(args.tick.instrumentId);
   if (!symbol) {
@@ -381,6 +416,8 @@ async function applyTickToBuilders(args: {
           redis: args.redis,
           instrument,
           timeframe,
+          streamGate: "live",
+          telegram: args.telegram,
         });
         closedAny = true;
       }
@@ -395,6 +432,7 @@ async function applyTickToBuilders(args: {
         redis: args.redis,
         instrument,
         staleAfterMs: args.staleAfterMs,
+        telegram: args.telegram,
       });
     } catch (error) {
       logger.warn({ err: error, symbol }, "signal evaluation failed");

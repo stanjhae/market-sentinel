@@ -1,1 +1,1 @@
-export { envSchema, parseEnv, hasEtoroCredentials, type Env } from "./env.js";
+export { envSchema, parseEnv, hasEtoroCredentials, hasTelegramCredentials, type Env } from "./env.js";

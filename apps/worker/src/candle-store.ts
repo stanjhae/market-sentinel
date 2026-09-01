@@ -19,6 +19,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
 import { evaluateStructure } from "./structure-store.js";
+import type { TelegramCredentials } from "./alert-store.js";
 
 export const BACKFILL_CANDLE_COUNT = 500;
 export const RECONCILE_CANDLE_COUNT = 20;
@@ -240,6 +241,7 @@ export async function backfillInstrument(args: {
   rest: EtoroRestClient;
   instrument: InstrumentRef;
   now?: Date;
+  telegram?: TelegramCredentials;
 }): Promise<Map<Timeframe, CandleBuilder>> {
   const builders = new Map<Timeframe, CandleBuilder>();
   const now = args.now ?? new Date();
@@ -281,6 +283,8 @@ export async function backfillInstrument(args: {
       instrument: args.instrument,
       timeframe,
       now,
+      streamGate: "historical",
+      telegram: args.telegram,
     });
     builders.set(timeframe, builder);
   }
@@ -293,6 +297,7 @@ export async function reconcileInstrument(args: {
   rest: EtoroRestClient;
   instrument: InstrumentRef;
   now?: Date;
+  telegram?: TelegramCredentials;
 }): Promise<number> {
   const now = args.now ?? new Date();
   let revisions = 0;
@@ -331,6 +336,8 @@ export async function reconcileInstrument(args: {
           instrument: args.instrument,
           timeframe,
           now,
+          streamGate: "live",
+          telegram: args.telegram,
         });
       }
     }

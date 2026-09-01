@@ -9,4 +9,6 @@ export const REDIS_KEYS = {
   regime: (symbol: string) => `sentinel:regime:${symbol}`,
   zones: (symbol: string) => `sentinel:zones:${symbol}`,
   signals: (symbol: string) => `sentinel:signals:${symbol}`,
+  eventsChannel: "sentinel:events",
+  streamStaleEpisode: "sentinel:stream:stale-episode",
 } as const;

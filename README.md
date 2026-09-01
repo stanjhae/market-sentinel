@@ -68,6 +68,8 @@ Register keys at [api-portal.etoro.com](https://api-portal.etoro.com/).
 | `ETORO_USER_KEY` | server only | Never `NEXT_PUBLIC_` |
 | `DATABASE_URL` | server | Postgres |
 | `REDIS_URL` | server | Redis |
+| `TELEGRAM_BOT_TOKEN` | server only | Optional. Never `NEXT_PUBLIC_` |
+| `TELEGRAM_CHAT_ID` | server only | Optional. Never `NEXT_PUBLIC_` |
 
 ## Safety
 
@@ -84,7 +86,7 @@ Four versioned detectors ship in Milestone 4: `breakdown-retest@1.0.0`, `sweep-r
 2. Candles and indicators — `/markets/:symbol` chart, 15m/1h/4h storage, RSI/ATR/EMA/BB
 3. Structure and zones — pivots, HH/HL/LH/LL, auto/manual zones, regime, MultiTimeframeContext
 4. Signals
-5. Alerts
+5. Alerts — in-app inbox, optional Telegram, event-driven SSE
 6. Account / risk / Trade Gate
 7. Journal and analytics
 8. Backtest / replay

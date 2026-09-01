@@ -136,3 +136,26 @@ export type DomainEventType =
   | "POSITION_UPDATED"
   | "POSITION_CLOSED"
   | "RISK_LIMIT_HIT";
+
+export {
+  ALERT_DEFAULTS,
+  ALERT_TYPES,
+  DEFAULT_ALERT_SETTINGS,
+  M6_STUB_ALERT_TYPES,
+  alertAllowedBySettings,
+  alertDedupeKey,
+  alertHeadline,
+  alertSendDecision,
+  formatAlertCopy,
+  mergeAlertSettings,
+  isAlertCooldownActive,
+  parseAlertType,
+  isM6StubAlertType,
+  mapSignalTransitionToAlert,
+  mapZoneBreakToAlert,
+  scoreCrossedWatch,
+  shouldAlertStreamStale,
+  shouldEmitAlert,
+  shouldPublishStreamStatus,
+} from "./alerts.js";
+export type { AlertChannel, AlertRecord, AlertSettings, AlertType } from "./alerts.js";

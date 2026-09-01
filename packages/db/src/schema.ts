@@ -181,3 +181,33 @@ export const signals = pgTable(
       .where(sql`${table.state} not in ('INVALIDATED', 'EXPIRED', 'DISMISSED', 'CLOSED')`),
   ],
 );
+
+export const alerts = pgTable(
+  "alerts",
+  {
+    id: text("id").primaryKey(),
+    type: text("type").notNull(),
+    instrumentId: text("instrument_id").notNull(),
+    symbol: text("symbol").notNull(),
+    signalId: text("signal_id"),
+    zoneId: text("zone_id"),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    score: integer("score"),
+    direction: text("direction"),
+    state: text("state"),
+    dedupeKey: text("dedupe_key").notNull(),
+    channelsJson: jsonb("channels_json").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("alerts_dedupe_key_idx").on(table.dedupeKey)],
+);
+
+export const appSettings = pgTable("app_settings", {
+  id: text("id").primaryKey(),
+  alertsJson: jsonb("alerts_json").notNull(),
+  riskJson: jsonb("risk_json").notNull(),
+  marketsJson: jsonb("markets_json").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
