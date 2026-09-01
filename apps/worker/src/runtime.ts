@@ -22,6 +22,7 @@ import {
   type InstrumentRef,
 } from "./candle-store.js";
 import { createSerialQueue } from "./serial-queue.js";
+import { evaluateSignals } from "./signal-store.js";
 import { evaluateStructure } from "./structure-store.js";
 
 const logger = createLogger("worker");
@@ -192,6 +193,7 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
               idToSymbol,
               instrumentsBySymbol,
               builders,
+              staleAfterMs: env.STALE_TICK_MS,
             }),
         });
       },
@@ -252,6 +254,13 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
           rest,
           instrument,
         });
+        await evaluateSignals({
+          db: dbPair.db,
+          redis,
+          instrument,
+          staleAfterMs: env.STALE_TICK_MS,
+          streamGate: "historical",
+        });
         for (const timeframe of TIMEFRAMES) {
           const builder = created.get(timeframe);
           if (builder) {
@@ -278,6 +287,12 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
           rest,
           instrument,
         });
+        await evaluateSignals({
+          db: dbPair.db,
+          redis,
+          instrument,
+          staleAfterMs: env.STALE_TICK_MS,
+        });
         if (revisions > 0) {
           logger.info({ symbol: instrument.symbol, revisions }, "REST candle reconcile revised finals");
         }
@@ -286,6 +301,11 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
       }
     }
   };
+
+  await redis.set(
+    REDIS_KEYS.stream,
+    JSON.stringify({ streamStatus: "DELAYED", lastQuoteAt: null, reconnectCount: 0 }),
+  );
 
   void syncAccount();
   await backfill();
@@ -321,6 +341,7 @@ async function applyTickToBuilders(args: {
   idToSymbol: Map<number, CanonicalSymbol>;
   instrumentsBySymbol: Map<CanonicalSymbol, InstrumentRef>;
   builders: Map<string, CandleBuilder>;
+  staleAfterMs: number;
 }) {
   const symbol = args.idToSymbol.get(args.tick.instrumentId);
   if (!symbol) {
@@ -332,6 +353,7 @@ async function applyTickToBuilders(args: {
     return;
   }
   const at = new Date(args.tick.quotedAt);
+  let closedAny = false;
   for (const timeframe of TIMEFRAMES) {
     const key = builderKey({ symbol, timeframe });
     let builder = args.builders.get(key);
@@ -360,9 +382,22 @@ async function applyTickToBuilders(args: {
           instrument,
           timeframe,
         });
+        closedAny = true;
       }
     } catch (error) {
       logger.warn({ err: error, symbol, timeframe }, "live candle update failed");
+    }
+  }
+  if (closedAny) {
+    try {
+      await evaluateSignals({
+        db: args.db,
+        redis: args.redis,
+        instrument,
+        staleAfterMs: args.staleAfterMs,
+      });
+    } catch (error) {
+      logger.warn({ err: error, symbol }, "signal evaluation failed");
     }
   }
 }

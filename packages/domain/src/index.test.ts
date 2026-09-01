@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { WATCHLIST, isWatchlistSymbol, parseWatchlistSymbol, type Trend, type ZoneSource } from "./index.js";
+import {
+  WATCHLIST,
+  entryStatusFromState,
+  isTerminalSignalState,
+  isWatchlistSymbol,
+  opportunityLabelFromScore,
+  parseWatchlistSymbol,
+  type Trend,
+  type ZoneSource,
+} from "./index.js";
 
 describe("WATCHLIST", () => {
   it("contains the four MVP instruments", () => {
@@ -12,6 +21,13 @@ describe("WATCHLIST", () => {
     expect(isWatchlistSymbol("us30")).toBe(false);
     expect(parseWatchlistSymbol({ value: "us30" })).toBe("US30");
     expect(parseWatchlistSymbol({ value: "btc" })).toBeNull();
+  });
+
+  it("maps score buckets and entry status without conflating them", () => {
+    expect(opportunityLabelFromScore({ score: 84 })).toBe("Strong");
+    expect(entryStatusFromState({ state: "WATCHING" })).toBe("WAITING FOR CONFIRMATION");
+    expect(isTerminalSignalState({ state: "INVALIDATED" })).toBe(true);
+    expect(isTerminalSignalState({ state: "CONFIRMED" })).toBe(false);
   });
 
   it("reserves Milestone 3 regime and zone enums", () => {

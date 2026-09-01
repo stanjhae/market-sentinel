@@ -29,6 +29,16 @@ export {
   swingHighFixture,
 } from "./structure.js";
 export type { FixtureBar, FixtureTimeframe } from "./structure.js";
+export {
+  SIGNAL_ZONE_LIBRARY,
+  breakdownRetestReplay,
+  doNotChaseReplay,
+  falseBreakdownReplay,
+  replayDirection,
+  sweepReclaimReplay,
+  trendPullbackReplay,
+} from "./signals.js";
+export type { SignalReplayExpected, SignalReplayStep } from "./signals.js";
 
 export const FIXTURE_NAMES = [
   "breakdown-retest",

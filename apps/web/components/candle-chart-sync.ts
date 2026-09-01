@@ -40,10 +40,22 @@ export type OverlayLine = {
   id: string;
   price: number;
   title: string;
-  tone: "support" | "resistance" | "both" | "broken" | "ema" | "bb";
+  tone: "support" | "resistance" | "both" | "broken" | "ema" | "bb" | "signal";
 };
 
-export function overlayLines(args: { zones: PriceZoneDto[]; indicators: IndicatorSnapshotDto | null }): OverlayLine[] {
+export type SignalOverlay = {
+  id: string;
+  entryLow?: string | null;
+  entryHigh?: string | null;
+  invalidation?: string | null;
+  target?: string | null;
+};
+
+export function overlayLines(args: {
+  zones: PriceZoneDto[];
+  indicators: IndicatorSnapshotDto | null;
+  signals?: SignalOverlay[];
+}): OverlayLine[] {
   const lines: OverlayLine[] = args.zones.flatMap((zone) => {
     const tone =
       zone.status !== "ACTIVE" ? "broken" : zone.type === "SUPPORT" ? "support" : zone.type === "RESISTANCE" ? "resistance" : "both";
@@ -71,6 +83,20 @@ export function overlayLines(args: { zones: PriceZoneDto[]; indicators: Indicato
   }
   if (indicators?.bbLower20x2) {
     lines.push({ id: "bbLower", price: Number(indicators.bbLower20x2), title: "BB lower", tone: "bb" });
+  }
+  for (const signal of args.signals ?? []) {
+    if (signal.entryLow) {
+      lines.push({ id: `${signal.id}:entryLow`, price: Number(signal.entryLow), title: "Entry low", tone: "signal" });
+    }
+    if (signal.entryHigh) {
+      lines.push({ id: `${signal.id}:entryHigh`, price: Number(signal.entryHigh), title: "Entry high", tone: "signal" });
+    }
+    if (signal.invalidation) {
+      lines.push({ id: `${signal.id}:inv`, price: Number(signal.invalidation), title: "Invalidation", tone: "signal" });
+    }
+    if (signal.target) {
+      lines.push({ id: `${signal.id}:t1`, price: Number(signal.target), title: "Target 1", tone: "signal" });
+    }
   }
   return lines;
 }

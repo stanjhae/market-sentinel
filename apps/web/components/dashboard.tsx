@@ -106,8 +106,9 @@ export function Dashboard({ symbols }: DashboardProps) {
       </section>
 
       <section className="grid gap-3 md:grid-cols-2">
-        {symbols.map((symbol) => {
-          const quote = markets?.markets.find((item) => item.symbol === symbol);
+        {(markets?.markets ?? symbols.map((symbol) => ({ symbol }))).map((item) => {
+          const symbol = item.symbol;
+          const quote = markets?.markets.find((market) => market.symbol === symbol);
           return (
             <Card key={symbol}>
               <div className="flex items-start justify-between">
@@ -156,7 +157,21 @@ export function Dashboard({ symbols }: DashboardProps) {
                     {quote?.closestSupport ?? "—"} / {quote?.closestResistance ?? "—"}
                   </p>
                 </div>
+                <div>
+                  <p>Opportunity score</p>
+                  <p className="text-foreground">
+                    {quote?.opportunityScore ?? "—"}
+                    {quote?.opportunityLabel ? ` · ${quote.opportunityLabel}` : ""}
+                  </p>
+                </div>
+                <div>
+                  <p>Entry status</p>
+                  <p className="text-foreground">{quote?.entryStatus ?? quote?.signalState ?? "—"}</p>
+                </div>
               </div>
+              {quote?.signalExplanation ? (
+                <p className="mt-3 font-mono text-xs text-muted-foreground">{quote.signalExplanation}</p>
+              ) : null}
             </Card>
           );
         })}

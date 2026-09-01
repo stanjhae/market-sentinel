@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const instruments = pgTable(
@@ -138,4 +139,45 @@ export const marketRegimes = pgTable(
     evidenceJson: jsonb("evidence_json"),
   },
   (table) => [uniqueIndex("market_regimes_instrument_tf_ts_idx").on(table.instrumentId, table.timeframe, table.timestamp)],
+);
+
+export const signals = pgTable(
+  "signals",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull(),
+    symbol: text("symbol").notNull(),
+    strategyKey: text("strategy_key").notNull(),
+    strategyVersion: text("strategy_version").notNull(),
+    direction: text("direction").notNull(),
+    state: text("state").notNull(),
+    triggerTimeframe: text("trigger_timeframe").notNull(),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).notNull(),
+    watchingAt: timestamp("watching_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    tradePlannedAt: timestamp("trade_planned_at", { withTimezone: true }),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    expiredAt: timestamp("expired_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    score: integer("score").notNull(),
+    confidenceLabel: text("confidence_label").notNull(),
+    entryZoneLow: text("entry_zone_low"),
+    entryZoneHigh: text("entry_zone_high"),
+    invalidationPrice: text("invalidation_price"),
+    target1: text("target1"),
+    target2: text("target2"),
+    target3: text("target3"),
+    riskRewardToT1: text("risk_reward_to_t1"),
+    riskRewardToT2: text("risk_reward_to_t2"),
+    lastEvaluatedOpenTimeUtc: timestamp("last_evaluated_open_time_utc", { withTimezone: true }).notNull(),
+    evidenceJson: jsonb("evidence_json"),
+    snapshotJson: jsonb("snapshot_json"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("signals_open_identity_idx")
+      .on(table.instrumentId, table.strategyKey, table.direction)
+      .where(sql`${table.state} not in ('INVALIDATED', 'EXPIRED', 'DISMISSED', 'CLOSED')`),
+  ],
 );
