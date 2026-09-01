@@ -1,0 +1,146 @@
+"use client";
+
+import type { AccountResponse, MarketsResponse } from "@market-sentinel/contracts";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { API_BASE_URL } from "@/lib/api";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
+type DashboardProps = {
+  symbols: string[];
+};
+
+function freshnessVariant(value: string) {
+  if (value === "LIVE") return "live" as const;
+  if (value === "STALE" || value === "DELAYED") return "stale" as const;
+  return "disconnected" as const;
+}
+
+export function Dashboard({ symbols }: DashboardProps) {
+  const [markets, setMarkets] = useState<MarketsResponse | null>(null);
+  const [account, setAccount] = useState<AccountResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRest() {
+      try {
+        const [marketsResponse, accountResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/markets`),
+          fetch(`${API_BASE_URL}/account`),
+        ]);
+        if (!marketsResponse.ok) {
+          throw new Error(`API ${marketsResponse.status}`);
+        }
+        const payload = (await marketsResponse.json()) as MarketsResponse;
+        const accountPayload = accountResponse.ok
+          ? ((await accountResponse.json()) as AccountResponse)
+          : null;
+        if (!cancelled) {
+          setMarkets(payload);
+          setAccount(accountPayload);
+          setError(null);
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : "API unavailable");
+        }
+      }
+    }
+
+    void loadRest();
+
+    const source = new EventSource(`${API_BASE_URL}/stream`);
+    source.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string; payload?: MarketsResponse };
+        if (parsed.type === "markets" && parsed.payload && !cancelled) {
+          setMarkets(parsed.payload);
+          setError(null);
+        }
+      } catch {
+        // ignore malformed SSE frames
+      }
+    };
+    source.onerror = () => {
+      if (!cancelled) {
+        setError("stream disconnected");
+      }
+    };
+
+    return () => {
+      cancelled = true;
+      source.close();
+    };
+  }, []);
+
+  const status = markets?.streamStatus ?? "DISCONNECTED";
+
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-3 md:grid-cols-5">
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">eToro</p>
+          <p className="mt-2 font-mono text-sm">{markets?.etoroConnected ? "Connected" : "Disconnected"}</p>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">Stream</p>
+          <div className="mt-2">
+            <Badge variant={freshnessVariant(status)}>{status}</Badge>
+          </div>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">Last quote</p>
+          <p className="mt-2 font-mono text-sm">{markets?.lastQuoteAt ?? "—"}</p>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">Equity</p>
+          <p className="mt-2 font-mono text-sm">{account?.equity ?? "—"}</p>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">API</p>
+          <p className="mt-2 font-mono text-sm">{error ?? "Live"}</p>
+        </Card>
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2">
+        {symbols.map((symbol) => {
+          const quote = markets?.markets.find((item) => item.symbol === symbol);
+          return (
+            <Card key={symbol}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <Link href={`/markets/${symbol}`} className="font-mono text-sm text-muted-foreground hover:text-foreground">
+                    {quote?.displayName ?? symbol}
+                  </Link>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">
+                    {quote?.last ?? quote?.bid ?? "—"}
+                  </p>
+                </div>
+                <Badge variant={freshnessVariant(quote?.freshness ?? "DISCONNECTED")}>
+                  {quote?.resolved === false ? "UNRESOLVED" : (quote?.freshness ?? "DISCONNECTED")}
+                </Badge>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3 font-mono text-xs text-muted-foreground">
+                <div>
+                  <p>Bid</p>
+                  <p className="text-foreground">{quote?.bid ?? "—"}</p>
+                </div>
+                <div>
+                  <p>Ask</p>
+                  <p className="text-foreground">{quote?.ask ?? "—"}</p>
+                </div>
+                <div>
+                  <p>Day</p>
+                  <p className="text-foreground">{quote?.dailyChangePct ?? "—"}</p>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </section>
+    </div>
+  );
+}

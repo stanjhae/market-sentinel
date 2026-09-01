@@ -1,0 +1,29 @@
+{
+  "name": "@market-sentinel/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "start": "tsx --env-file=../../.env src/index.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@market-sentinel/config": "workspace:*",
+    "@market-sentinel/contracts": "workspace:*",
+    "@market-sentinel/db": "workspace:*",
+    "@market-sentinel/domain": "workspace:*",
+    "@market-sentinel/etoro-client": "workspace:*",
+    "@market-sentinel/indicators": "workspace:*",
+    "@market-sentinel/observability": "workspace:*",
+    "decimal.js": "^10.6.0",
+    "drizzle-orm": "^0.44.5",
+    "ioredis": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5"
+  }
+}

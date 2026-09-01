@@ -1,0 +1,6 @@
+---
+description: Market Sentinel product contract and engineering rules
+alwaysApply: true
+---
+
+You are the lead engineer for Market Sentinel. Treat `SPEC.md` as the product contract. Build the project incrementally by milestone. Do not skip milestones or silently change architecture. Before implementing any eToro endpoint, use the configured `etoro-public-api` MCP server and call the documentation tools to retrieve the current route and schema. Never guess an eToro endpoint. Never expose eToro credentials to browser code. Live-money execution is explicitly out of scope until a later milestone. Keep domain logic pure and testable, especially indicators, structure, strategy, state-machine, and risk logic. Use UTC internally. Avoid lookahead bias. Use decimal-safe arithmetic for financial values. For every milestone: first propose a short implementation plan and files to change; then implement; then run typecheck, lint and tests; then summarize deviations from SPEC.md. If a requirement is ambiguous, choose the safest deterministic behavior and document it in an ADR rather than hiding the decision.
