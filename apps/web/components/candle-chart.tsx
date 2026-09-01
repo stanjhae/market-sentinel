@@ -2,12 +2,13 @@
 
 import type { CandleDto, IndicatorSnapshotDto, PriceZoneDto } from "@market-sentinel/contracts";
 import { useEffect, useRef } from "react";
-import { decideChartSync, overlayLines, toChartBars, type OverlayLine } from "./candle-chart-sync";
+import { decideChartSync, overlayLines, toChartBars, type OverlayLine, type SignalOverlay } from "./candle-chart-sync";
 
 type CandleChartProps = {
   candles: CandleDto[];
   zones?: PriceZoneDto[];
   indicators?: IndicatorSnapshotDto | null;
+  signals?: SignalOverlay[];
 };
 
 type PriceLine = { applyOptions: (options: object) => void };
@@ -29,7 +30,7 @@ function cssHsl(args: { name: string }): string {
   return `hsl(${value})`;
 }
 
-export function CandleChart({ candles, zones = [], indicators = null }: CandleChartProps) {
+export function CandleChart({ candles, zones = [], indicators = null, signals = [] }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ChartInstance | null>(null);
   const seriesRef = useRef<CandleSeries | null>(null);
@@ -37,11 +38,13 @@ export function CandleChart({ candles, zones = [], indicators = null }: CandleCh
   const candlesRef = useRef(candles);
   const zonesRef = useRef(zones);
   const indicatorsRef = useRef(indicators);
+  const signalsRef = useRef(signals);
   const firstOpenRef = useRef<string | null>(null);
   const lastOpenRef = useRef<string | null>(null);
   candlesRef.current = candles;
   zonesRef.current = zones;
   indicatorsRef.current = indicators;
+  signalsRef.current = signals;
 
   useEffect(() => {
     const node = containerRef.current;
@@ -92,7 +95,7 @@ export function CandleChart({ candles, zones = [], indicators = null }: CandleCh
         applyOverlays({
           series: series as unknown as CandleSeries,
           overlayRef,
-          lines: overlayLines({ zones: zonesRef.current, indicators: indicatorsRef.current }),
+          lines: overlayLines({ zones: zonesRef.current, indicators: indicatorsRef.current, signals: signalsRef.current }),
         });
         resizeObserver = new ResizeObserver(() => {
           instance.applyOptions({ width: containerRef.current?.clientWidth ?? 0 });
@@ -136,9 +139,9 @@ export function CandleChart({ candles, zones = [], indicators = null }: CandleCh
     applyOverlays({
       series,
       overlayRef,
-      lines: overlayLines({ zones, indicators }),
+      lines: overlayLines({ zones, indicators, signals }),
     });
-  }, [zones, indicators]);
+  }, [zones, indicators, signals]);
 
   return <div ref={containerRef} className="h-[420px] w-full" />;
 }
@@ -226,6 +229,9 @@ function overlayColor(args: { tone: OverlayLine["tone"] }): string {
   }
   if (args.tone === "bb") {
     return cssHsl({ name: "--stale" });
+  }
+  if (args.tone === "signal") {
+    return cssHsl({ name: "--primary" });
   }
   return cssHsl({ name: "--foreground" });
 }

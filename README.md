@@ -75,7 +75,7 @@ Live-money order placement is out of scope until a later milestone. The eToro cl
 
 ## Strategies
 
-Four versioned detectors are planned: breakdown/retest, liquidity sweep + reclaim, trend pullback, and DO_NOT_CHASE. None ship in Milestone 0.
+Four versioned detectors ship in Milestone 4: `breakdown-retest@1.0.0`, `sweep-reclaim@1.0.0`, `trend-pullback@1.0.0`, and advisory `do-not-chase@1.0.0`.
 
 ## Roadmap
 

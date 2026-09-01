@@ -37,6 +37,11 @@ export function disconnectedMarkets(): MarketsResponse {
       momentum15m: null,
       closestSupport: null,
       closestResistance: null,
+      opportunityScore: null,
+      opportunityLabel: null,
+      signalState: null,
+      signalExplanation: null,
+      entryStatus: null,
     })),
   };
 }
@@ -66,6 +71,7 @@ export async function readMarkets(redis: Redis, staleAfterMs: number): Promise<M
     const lastQuoteAt = quote?.lastQuoteAt ?? null;
     const freshness = freshnessFrom(lastQuoteAt, stream?.streamStatus ?? "DISCONNECTED", staleAfterMs);
     const structure = await readStructureSnapshot({ redis, symbol, last: quote?.last ?? null });
+    const signal = await readSignalSummary({ redis, symbol });
     markets.push({
       symbol,
       etoroInstrumentId: quote?.etoroInstrumentId ?? null,
@@ -78,8 +84,10 @@ export async function readMarkets(redis: Redis, staleAfterMs: number): Promise<M
       lastQuoteAt,
       freshness,
       ...structure,
+      ...signal,
     });
   }
+  markets.sort((left, right) => (right.opportunityScore ?? -1) - (left.opportunityScore ?? -1));
   return {
     etoroConnected: Boolean(stream && stream.streamStatus !== "DISCONNECTED"),
     streamStatus: stream?.streamStatus ?? "DISCONNECTED",
@@ -121,6 +129,39 @@ export async function readStructureSnapshot(args: {
     momentum15m: timing?.location ?? timing?.structure ?? null,
     closestSupport: closestMidpoint({ last: args.last, zones: supports }),
     closestResistance: closestMidpoint({ last: args.last, zones: resistances }),
+  };
+}
+
+export async function readSignalSummary(args: { redis: Redis; symbol: string }): Promise<{
+  opportunityScore: number | null;
+  opportunityLabel: string | null;
+  signalState: string | null;
+  signalExplanation: string | null;
+  entryStatus: string | null;
+}> {
+  const raw = await args.redis.get(REDIS_KEYS.signals(args.symbol));
+  if (!raw) {
+    return {
+      opportunityScore: null,
+      opportunityLabel: null,
+      signalState: null,
+      signalExplanation: null,
+      entryStatus: null,
+    };
+  }
+  const parsed = JSON.parse(raw) as {
+    opportunityScore?: number | null;
+    opportunityLabel?: string | null;
+    signalState?: string | null;
+    signalExplanation?: string | null;
+    entryStatus?: string | null;
+  };
+  return {
+    opportunityScore: parsed.opportunityScore ?? null,
+    opportunityLabel: parsed.opportunityLabel ?? null,
+    signalState: parsed.signalState ?? null,
+    signalExplanation: parsed.signalExplanation ?? null,
+    entryStatus: parsed.entryStatus ?? null,
   };
 }
 

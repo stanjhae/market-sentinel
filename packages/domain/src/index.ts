@@ -40,6 +40,65 @@ export type SignalState =
 
 export type SignalDirection = "LONG" | "SHORT" | "NEUTRAL";
 
+export type ProposedSignalState = "NONE" | "DETECTED" | "WATCHING" | "CONFIRMED" | "INVALIDATED" | "EXPIRED";
+
+export type OpportunityLabel = "Ignore" | "Weak" | "Interesting" | "Watch" | "Strong" | "Exceptional";
+
+export type StrategyKey = "breakdown-retest" | "sweep-reclaim" | "trend-pullback" | "do-not-chase";
+
+export const TERMINAL_SIGNAL_STATES = ["INVALIDATED", "EXPIRED", "DISMISSED", "CLOSED"] as const;
+
+export function isTerminalSignalState(args: { state: SignalState }): boolean {
+  return (TERMINAL_SIGNAL_STATES as readonly string[]).includes(args.state);
+}
+
+export function entryStatusFromState(args: { state: SignalState }): string {
+  if (args.state === "WATCHING") {
+    return "WAITING FOR CONFIRMATION";
+  }
+  if (args.state === "DETECTED") {
+    return "DETECTED";
+  }
+  if (args.state === "CONFIRMED") {
+    return "CONFIRMED";
+  }
+  if (args.state === "TRADE_PLANNED") {
+    return "TRADE PLANNED";
+  }
+  if (args.state === "ENTERED") {
+    return "ENTERED";
+  }
+  if (args.state === "CLOSED") {
+    return "CLOSED";
+  }
+  if (args.state === "INVALIDATED") {
+    return "INVALIDATED";
+  }
+  if (args.state === "EXPIRED") {
+    return "EXPIRED";
+  }
+  return "DISMISSED";
+}
+
+export function opportunityLabelFromScore(args: { score: number }): OpportunityLabel {
+  if (args.score >= 90) {
+    return "Exceptional";
+  }
+  if (args.score >= 80) {
+    return "Strong";
+  }
+  if (args.score >= 70) {
+    return "Watch";
+  }
+  if (args.score >= 60) {
+    return "Interesting";
+  }
+  if (args.score >= 50) {
+    return "Weak";
+  }
+  return "Ignore";
+}
+
 export type TradingStatus = "ACTIVE" | "COOLDOWN" | "SESSION_BLOCKED" | "NEWS_BLACKOUT";
 
 export type StreamFreshness = "LIVE" | "DELAYED" | "STALE" | "DISCONNECTED";

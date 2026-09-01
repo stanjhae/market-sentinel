@@ -18,6 +18,11 @@ export const marketQuoteSchema = z.object({
   momentum15m: z.string().nullable(),
   closestSupport: z.string().nullable(),
   closestResistance: z.string().nullable(),
+  opportunityScore: z.number().int().nullable(),
+  opportunityLabel: z.string().nullable(),
+  signalState: z.string().nullable(),
+  signalExplanation: z.string().nullable(),
+  entryStatus: z.string().nullable(),
 });
 
 export const marketsResponseSchema = z.object({
@@ -162,6 +167,64 @@ export const zonesResponseSchema = z.object({
   zones: z.array(priceZoneDtoSchema),
 });
 
+export const signalDtoSchema = z.object({
+  id: z.string(),
+  instrumentId: z.string(),
+  symbol: z.string(),
+  strategyKey: z.string(),
+  strategyVersion: z.string(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+  state: z.enum([
+    "DETECTED",
+    "WATCHING",
+    "CONFIRMED",
+    "TRADE_PLANNED",
+    "ENTERED",
+    "CLOSED",
+    "INVALIDATED",
+    "EXPIRED",
+    "DISMISSED",
+  ]),
+  triggerTimeframe: z.enum(["15m", "1h", "4h"]),
+  detectedAt: z.string(),
+  watchingAt: z.string().nullable(),
+  confirmedAt: z.string().nullable(),
+  tradePlannedAt: z.string().nullable(),
+  invalidatedAt: z.string().nullable(),
+  expiredAt: z.string().nullable(),
+  dismissedAt: z.string().nullable(),
+  score: z.number().int(),
+  confidenceLabel: z.string(),
+  entryStatus: z.string(),
+  entryZoneLow: z.string().nullable(),
+  entryZoneHigh: z.string().nullable(),
+  invalidationPrice: z.string().nullable(),
+  target1: z.string().nullable(),
+  target2: z.string().nullable(),
+  target3: z.string().nullable(),
+  riskRewardToT1: z.string().nullable(),
+  riskRewardToT2: z.string().nullable(),
+  lastEvaluatedOpenTimeUtc: z.string(),
+  evidenceJson: z.record(z.unknown()),
+  snapshotJson: z.record(z.unknown()),
+});
+
+export const signalsResponseSchema = z.object({
+  available: z.boolean(),
+  staleStream: z.boolean(),
+  signals: z.array(signalDtoSchema),
+});
+
+export const signalDetailResponseSchema = z.object({
+  available: z.boolean(),
+  signal: signalDtoSchema.nullable(),
+});
+
+export const createPlanResponseSchema = z.object({
+  status: z.literal("STUB"),
+  signalId: z.string(),
+});
+
 export const healthLiveSchema = z.object({
   status: z.literal("ok"),
 });
@@ -203,3 +266,7 @@ export type PriceZoneDto = z.infer<typeof priceZoneDtoSchema>;
 export type MarketRegimeDto = z.infer<typeof marketRegimeDtoSchema>;
 export type MultiTimeframeContextDto = z.infer<typeof multiTimeframeContextSchema>;
 export type ZonesResponse = z.infer<typeof zonesResponseSchema>;
+export type SignalDto = z.infer<typeof signalDtoSchema>;
+export type SignalsResponse = z.infer<typeof signalsResponseSchema>;
+export type SignalDetailResponse = z.infer<typeof signalDetailResponseSchema>;
+export type CreatePlanResponse = z.infer<typeof createPlanResponseSchema>;

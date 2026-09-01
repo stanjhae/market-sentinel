@@ -1,6 +1,6 @@
 "use client";
 
-import type { CandlesResponse, MarketContextResponse, PriceZoneDto } from "@market-sentinel/contracts";
+import type { CandlesResponse, MarketContextResponse, PriceZoneDto, SignalsResponse } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { API_BASE_URL } from "@/lib/api";
@@ -36,15 +36,17 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
   const [lowerBound, setLowerBound] = useState("");
   const [upperBound, setUpperBound] = useState("");
   const [zoneType, setZoneType] = useState<PriceZoneDto["type"]>("SUPPORT");
+  const [signals, setSignals] = useState<SignalsResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const [candlesResponse, contextResponse] = await Promise.all([
+        const [candlesResponse, contextResponse, signalsResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/markets/${symbol}/candles?timeframe=${timeframe}`),
           fetch(`${API_BASE_URL}/markets/${symbol}/context`),
+          fetch(`${API_BASE_URL}/signals?instrument=${symbol}`),
         ]);
         if (!candlesResponse.ok) {
           throw new Error(`API ${candlesResponse.status}`);
@@ -53,9 +55,11 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
         const contextPayload = contextResponse.ok
           ? ((await contextResponse.json()) as MarketContextResponse)
           : null;
+        const signalsPayload = signalsResponse.ok ? ((await signalsResponse.json()) as SignalsResponse) : null;
         if (!cancelled) {
           setCandles(candlePayload);
           setContext(contextPayload);
+          setSignals(signalsPayload);
           setError(null);
         }
       } catch (cause) {
@@ -83,6 +87,16 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
   const primaryZones = visibleZones.filter((zone) => zone.status === "ACTIVE" || zone.status === "FLIPPED" || zone.source === "USER_MANUAL");
   const brokenZones = visibleZones.filter((zone) => zone.status === "BROKEN" || zone.status === "EXPIRED");
   const mtf = context?.multiTimeframe;
+  const activeSignals = (signals?.signals ?? []).filter((signal) => signal.state !== "DISMISSED" && signal.state !== "CLOSED");
+  const signalOverlays = activeSignals
+    .filter((signal) => signal.state === "WATCHING" || signal.state === "CONFIRMED" || signal.state === "TRADE_PLANNED")
+    .map((signal) => ({
+      id: signal.id,
+      entryLow: signal.entryZoneLow,
+      entryHigh: signal.entryZoneHigh,
+      invalidation: signal.invalidationPrice,
+      target: signal.target1,
+    }));
 
   async function createZone() {
     const response = await fetch(`${API_BASE_URL}/markets/${symbol}/zones`, {
@@ -118,6 +132,9 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
               {quote?.freshness ?? "DISCONNECTED"}
             </Badge>
             <Badge>{error ?? (candles?.available ? "Candles" : "No history")}</Badge>
+            {quote?.opportunityScore !== null && quote?.opportunityScore !== undefined ? (
+              <Badge variant="live">Score {quote.opportunityScore}</Badge>
+            ) : null}
           </div>
         </div>
       </div>
@@ -139,7 +156,7 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
       </div>
 
       <Card className="p-2">
-        <CandleChart candles={candles?.candles ?? []} zones={primaryZones} indicators={indicators} />
+        <CandleChart candles={candles?.candles ?? []} zones={primaryZones} indicators={indicators} signals={signalOverlays} />
       </Card>
 
       <section className="grid gap-3 md:grid-cols-4">
@@ -230,6 +247,49 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
             </button>
           </div>
         </Card>
+      </section>
+
+      <section className="space-y-2">
+        <p className="text-xs uppercase text-muted-foreground">Signal timeline</p>
+        {signals?.staleStream ? (
+          <Card>
+            <p className="text-sm text-muted-foreground">Stream is stale. Signal generation is frozen.</p>
+          </Card>
+        ) : null}
+        {activeSignals.length === 0 ? (
+          <Card>
+            <p className="text-sm text-muted-foreground">No signals for this market yet.</p>
+          </Card>
+        ) : (
+          activeSignals.map((signal) => {
+            const transitions = Array.isArray(signal.evidenceJson.transitions)
+              ? (signal.evidenceJson.transitions as Array<{ state?: string; at?: string }>)
+              : [];
+            return (
+              <Card key={signal.id}>
+                <p className="font-mono text-sm">
+                  {signal.strategyKey} · {signal.direction} · {signal.entryStatus}
+                </p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  Opportunity score: {signal.score} · {signal.confidenceLabel}
+                </p>
+                <div className="mt-2 space-y-1 font-mono text-xs text-muted-foreground">
+                  {transitions.length === 0 ? (
+                    <p>
+                      {signal.state} at {signal.detectedAt}
+                    </p>
+                  ) : (
+                    transitions.map((item, index) => (
+                      <p key={`${signal.id}-${index}`}>
+                        {item.state} at {item.at}
+                      </p>
+                    ))
+                  )}
+                </div>
+              </Card>
+            );
+          })
+        )}
       </section>
 
       <section className="space-y-2">

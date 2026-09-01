@@ -8,6 +8,7 @@ import { emptyCandles, emptyContext, parseIsoDateQuery, parseTimeframeQuery, rea
 import { loadApiEnv } from "./env.js";
 import { disconnectedMarkets, emptyAccount, readAccount, readMarkets } from "./markets.js";
 import { createManualZone, deleteManualZone, emptyZones, parseManualZoneBody, readZones, updateManualZone } from "./zones.js";
+import { dismissStoredSignal, emptySignalDetail, emptySignals, parseSignalFilters, readSignal, readSignals, stubCreatePlan } from "./signals.js";
 
 export async function buildServer() {
   const env = loadApiEnv();
@@ -218,6 +219,56 @@ export async function buildServer() {
     }
     const markets = (await pingRedis()) ? await readMarkets(redis, env.STALE_TICK_MS) : disconnectedMarkets();
     return markets.markets.find((item) => item.symbol === symbol) ?? { symbol };
+  });
+
+  app.get("/signals", async (request) => {
+    const query = request.query as Record<string, unknown>;
+    if (!(await pingDatabase())) {
+      return emptySignals();
+    }
+    return readSignals({ db: dbPair.db, redis, filters: parseSignalFilters({ query }) });
+  });
+
+  app.get("/signals/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return emptySignalDetail();
+    }
+    const detail = await readSignal({ db: dbPair.db, id: params.id });
+    if (!detail.signal) {
+      return reply.code(404).send(detail);
+    }
+    return detail;
+  });
+
+  app.post("/signals/:id/dismiss", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const result = await dismissStoredSignal({ db: dbPair.db, redis, id: params.id });
+    if (result === "not_found") {
+      return reply.code(404).send({ error: "signal not found" });
+    }
+    if (result === "terminal") {
+      return reply.code(409).send({ error: "signal already closed" });
+    }
+    return readSignal({ db: dbPair.db, id: params.id });
+  });
+
+  app.post("/signals/:id/create-plan", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const result = await stubCreatePlan({ db: dbPair.db, redis, id: params.id });
+    if (!result.ok && result.reason === "not_found") {
+      return reply.code(404).send({ error: "signal not found" });
+    }
+    if (!result.ok) {
+      return reply.code(409).send({ error: "create-plan requires CONFIRMED" });
+    }
+    return { status: "STUB" as const, signalId: result.signalId };
   });
 
   app.get("/account", async () => {

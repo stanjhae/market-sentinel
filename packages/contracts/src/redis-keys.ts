@@ -8,4 +8,5 @@ export const REDIS_KEYS = {
   candlesChannel: "sentinel:candles",
   regime: (symbol: string) => `sentinel:regime:${symbol}`,
   zones: (symbol: string) => `sentinel:zones:${symbol}`,
+  signals: (symbol: string) => `sentinel:signals:${symbol}`,
 } as const;

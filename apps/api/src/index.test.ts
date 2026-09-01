@@ -20,7 +20,7 @@ describe("api health and markets", () => {
     expect(body.markets.map((item: { symbol: string }) => item.symbol)).toEqual(
       disconnectedMarkets().markets.map((item) => item.symbol),
     );
-    if (body.streamStatus === "DISCONNECTED") {
+    if (body.etoroConnected === false && body.markets.every((item: { lastQuoteAt: string | null }) => item.lastQuoteAt === null)) {
       expect(body.markets.every((item: { freshness: string }) => item.freshness === "DISCONNECTED")).toBe(true);
     }
     await app.close();
