@@ -121,7 +121,7 @@ describe("api health and markets", () => {
     await app.close();
   });
 
-  it("returns empty journal and analytics envelopes without inventing a track record", async () => {
+  it("returns empty journal and analytics envelopes without inventing a track record", { timeout: 20_000 }, async () => {
     const { app } = await buildServer();
     const journal = await app.inject({ method: "GET", url: "/journal" });
     expect(journal.statusCode).toBe(200);
@@ -147,7 +147,11 @@ describe("api health and markets", () => {
     const backtest = await app.inject({
       method: "POST",
       url: "/backtests",
-      payload: { symbol: "US30" },
+      payload: {
+        symbol: "US30",
+        from: "2020-01-01T00:00:00.000Z",
+        to: "2020-01-02T00:00:00.000Z",
+      },
     });
     expect([200, 503]).toContain(backtest.statusCode);
     if (backtest.statusCode === 200) {

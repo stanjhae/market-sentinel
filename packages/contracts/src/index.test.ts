@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { healthLiveSchema, sseEventSchema } from "./index.js";
+import { authSessionSchema, healthLiveSchema, sseEventSchema } from "./index.js";
 
 describe("contracts", () => {
   it("accepts a live health payload", () => {
@@ -37,5 +37,13 @@ describe("contracts", () => {
     ).toBe("alert");
     expect(sseEventSchema.parse({ type: "account", payload: {} }).type).toBe("account");
     expect(sseEventSchema.parse({ type: "risk" }).type).toBe("risk");
+  });
+
+  it("accepts an auth session envelope", () => {
+    expect(authSessionSchema.parse({ required: false, authenticated: true })).toEqual({
+      required: false,
+      authenticated: true,
+    });
+    expect(authSessionSchema.parse({ required: true, authenticated: false }).authenticated).toBe(false);
   });
 });

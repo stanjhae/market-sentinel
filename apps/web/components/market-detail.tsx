@@ -3,7 +3,7 @@
 import type { CandlesResponse, MarketContextResponse, PriceZoneDto, SignalsResponse } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -44,9 +44,9 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
     async function load() {
       try {
         const [candlesResponse, contextResponse, signalsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/markets/${symbol}/candles?timeframe=${timeframe}`),
-          fetch(`${API_BASE_URL}/markets/${symbol}/context`),
-          fetch(`${API_BASE_URL}/signals?instrument=${symbol}`),
+          apiFetch({ path: `/markets/${symbol}/candles?timeframe=${timeframe}` }),
+          apiFetch({ path: `/markets/${symbol}/context` }),
+          apiFetch({ path: `/signals?instrument=${symbol}` }),
         ]);
         if (!candlesResponse.ok) {
           throw new Error(`API ${candlesResponse.status}`);
@@ -99,10 +99,13 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
     }));
 
   async function createZone() {
-    const response = await fetch(`${API_BASE_URL}/markets/${symbol}/zones`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: zoneType, timeframe, lowerBound, upperBound, note }),
+    const response = await apiFetch({
+      path: `/markets/${symbol}/zones`,
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: zoneType, timeframe, lowerBound, upperBound, note }),
+      },
     });
     if (response.ok) {
       setLowerBound("");
@@ -112,7 +115,7 @@ export function MarketDetail({ symbol, timeframes }: MarketDetailProps) {
   }
 
   async function removeZone(args: { id: string }) {
-    await fetch(`${API_BASE_URL}/markets/${symbol}/zones/${args.id}`, { method: "DELETE" });
+    await apiFetch({ path: `/markets/${symbol}/zones/${args.id}`, init: { method: "DELETE" } });
   }
 
   return (

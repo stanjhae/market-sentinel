@@ -1,7 +1,8 @@
 "use client";
 
 import type { AlertDto, SettingsResponse, SseEvent } from "@market-sentinel/contracts";
-import { API_BASE_URL } from "@/lib/api";
+import { useAuthSession } from "@/components/auth-session";
+import { apiFetch, apiUrl } from "@/lib/api";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type StreamContextValue = {
@@ -13,18 +14,23 @@ type StreamContextValue = {
 const StreamContext = createContext<StreamContextValue | null>(null);
 
 export function SentinelStreamProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuthSession();
+  const allowed = session !== null && (!session.required || session.authenticated);
   const [unreadCount, setUnreadCountState] = useState(0);
   const handlersRef = useRef(new Set<(event: SseEvent) => void>());
   const settingsRef = useRef<SettingsResponse | null>(null);
 
   useEffect(() => {
+    if (!allowed) {
+      return;
+    }
     let cancelled = false;
 
     async function refreshUnread(args: { notify?: AlertDto }) {
       try {
         const [alertsResponse, settingsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/alerts?unread=true`),
-          fetch(`${API_BASE_URL}/settings`),
+          apiFetch({ path: "/alerts?unread=true" }),
+          apiFetch({ path: "/settings" }),
         ]);
         if (alertsResponse.ok) {
           const payload = (await alertsResponse.json()) as { unreadCount?: number };
@@ -48,7 +54,7 @@ export function SentinelStreamProvider({ children }: { children: ReactNode }) {
 
     void refreshUnread({});
 
-    const source = new EventSource(`${API_BASE_URL}/stream`);
+    const source = new EventSource(apiUrl({ path: "/stream" }), { withCredentials: true });
     source.onmessage = (message) => {
       try {
         const parsed = JSON.parse(message.data) as SseEvent;
@@ -69,7 +75,7 @@ export function SentinelStreamProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       source.close();
     };
-  }, []);
+  }, [allowed]);
 
   const value = useMemo<StreamContextValue>(
     () => ({

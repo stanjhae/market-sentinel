@@ -3,7 +3,7 @@
 import type { JournalDetailResponse } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -16,9 +16,10 @@ export function JournalDetail() {
   const [emotion, setEmotion] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [screenshotSrc, setScreenshotSrc] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const response = await fetch(`${API_BASE_URL}/journal/${id}`);
+    const response = await apiFetch({ path: `/journal/${id}` });
     if (!response.ok) {
       throw new Error(`API ${response.status}`);
     }
@@ -35,13 +36,53 @@ export function JournalDetail() {
     });
   }, [load]);
 
+  useEffect(() => {
+    const path = detail?.entry?.screenshotUrl;
+    if (!path) {
+      setScreenshotSrc(null);
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    void apiFetch({ path })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`API ${response.status}`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setScreenshotSrc(url);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setScreenshotSrc(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [detail?.entry?.screenshotUrl]);
+
   async function save(args: { body: Record<string, unknown> }) {
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/journal/${id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(args.body),
+      const response = await apiFetch({
+        path: `/journal/${id}`,
+        init: {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(args.body),
+        },
       });
       if (!response.ok) {
         throw new Error(`API ${response.status}`);
@@ -59,7 +100,10 @@ export function JournalDetail() {
     form.append("file", args.file);
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/journal/${id}/screenshot`, { method: "POST", body: form });
+      const response = await apiFetch({
+        path: `/journal/${id}/screenshot`,
+        init: { method: "POST", body: form },
+      });
       if (!response.ok) {
         throw new Error(`API ${response.status}`);
       }
@@ -175,12 +219,8 @@ export function JournalDetail() {
       </Card>
       <Card>
         <p className="text-xs uppercase text-muted-foreground">Screenshot</p>
-        {entry.screenshotUrl ? (
-          <img
-            src={`${API_BASE_URL}${entry.screenshotUrl}`}
-            alt="Trade screenshot"
-            className="mt-2 max-h-64 rounded-md border border-border"
-          />
+        {screenshotSrc ? (
+          <img src={screenshotSrc} alt="Trade screenshot" className="mt-2 max-h-64 rounded-md border border-border" />
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">No screenshot yet.</p>
         )}

@@ -1,6 +1,8 @@
 "use client";
 
+import { useAuthSession } from "@/components/auth-session";
 import { Badge } from "@/components/ui/badge";
+import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -18,9 +20,24 @@ const LINKS = [
   { href: "/settings", label: "Settings" },
 ] as const;
 
+async function signOut() {
+  await apiFetch({ path: "/auth/logout", init: { method: "POST" } }).catch(() => undefined);
+  window.location.assign("/login");
+}
+
 export function AppHeader() {
   const pathname = usePathname();
   const { unreadCount } = useSentinelStream();
+  const { session } = useAuthSession();
+
+  if (pathname === "/login") {
+    return (
+      <header className="border-b border-border px-6 py-4">
+        <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">Market Sentinel</p>
+        <p className="text-lg font-semibold">Terminal</p>
+      </header>
+    );
+  }
 
   return (
     <header className="border-b border-border px-6 py-4">
@@ -46,6 +63,17 @@ export function AppHeader() {
               ) : null}
             </Link>
           ))}
+          {session?.required && session.authenticated ? (
+            <button
+              type="button"
+              className="hover:text-foreground"
+              onClick={() => {
+                void signOut();
+              }}
+            >
+              Sign out
+            </button>
+          ) : null}
         </nav>
       </div>
     </header>

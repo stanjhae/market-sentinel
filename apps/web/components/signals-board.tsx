@@ -3,7 +3,7 @@
 import type { SignalDto, SignalsResponse, SseEvent } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSentinelEvents } from "./sentinel-stream";
@@ -35,7 +35,7 @@ export function SignalsBoard() {
   }, [scope, instrument, strategy, direction, state, timeframe, minScore]);
 
   const load = useCallback(async () => {
-    const response = await fetch(`${API_BASE_URL}/signals?${query}`);
+    const response = await apiFetch({ path: `/signals?${query}` });
     if (!response.ok) {
       throw new Error(`API ${response.status}`);
     }
@@ -82,11 +82,11 @@ export function SignalsBoard() {
     }
     setDismissingId(args.id);
     try {
-      const response = await fetch(`${API_BASE_URL}/signals/${args.id}/dismiss`, { method: "POST" });
+      const response = await apiFetch({ path: `/signals/${args.id}/dismiss`, init: { method: "POST" } });
       if (!response.ok && response.status !== 409) {
         throw new Error(`API ${response.status}`);
       }
-      const next = await fetch(`${API_BASE_URL}/signals?${query}`);
+      const next = await apiFetch({ path: `/signals?${query}` });
       if (next.ok) {
         setPayload((await next.json()) as SignalsResponse);
       } else {

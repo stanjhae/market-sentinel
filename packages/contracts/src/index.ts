@@ -361,6 +361,11 @@ export const healthReadySchema = z.object({
   }),
 });
 
+export const authSessionSchema = z.object({
+  required: z.boolean(),
+  authenticated: z.boolean(),
+});
+
 export const alertTypeSchema = z.enum([
   "WATCHLIST_OPPORTUNITY",
   "ENTRY_CONFIRMATION",
@@ -754,6 +759,7 @@ export type PsychologyChecklistDto = z.infer<typeof psychologyChecklistSchema>;
 export type EconomicEventDto = z.infer<typeof economicEventDtoSchema>;
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 export type HealthReady = z.infer<typeof healthReadySchema>;
+export type AuthSession = z.infer<typeof authSessionSchema>;
 export type SseEvent = z.infer<typeof sseEventSchema>;
 export type CandleDto = z.infer<typeof candleDtoSchema>;
 export type IndicatorSnapshotDto = z.infer<typeof indicatorSnapshotDtoSchema>;
