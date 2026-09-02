@@ -9,6 +9,8 @@ import { useSentinelStream } from "./sentinel-stream";
 const LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/signals", label: "Signals" },
+  { href: "/account", label: "Account" },
+  { href: "/trade-gate", label: "Trade Gate" },
   { href: "/alerts", label: "Alerts" },
   { href: "/settings", label: "Settings" },
 ] as const;
@@ -41,7 +43,6 @@ export function AppHeader() {
               ) : null}
             </Link>
           ))}
-          <span>Trade Gate</span>
           <span>Journal</span>
           <span>Analytics</span>
         </nav>

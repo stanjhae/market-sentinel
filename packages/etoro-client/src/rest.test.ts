@@ -129,4 +129,43 @@ describe("EtoroRestClient", () => {
     });
     await demo.getAggregatedPortfolio();
   });
+
+  it("uses official real PnL and demo history paths", async () => {
+    const real = new EtoroRestClient(config, {
+      fetch: async (input) => {
+        expect(String(input)).toContain(ETORO_ROUTES.pnlReal);
+        return new Response(JSON.stringify({ clientPortfolio: { credit: 1000, positions: [] } }), { status: 200 });
+      },
+    });
+    await real.getAccountPnl();
+
+    const demo = new EtoroRestClient({ ...config, accountType: "demo" }, {
+      fetch: async (input) => {
+        expect(String(input)).toContain(`${ETORO_ROUTES.tradeHistoryDemo}?minDate=2026-08-03`);
+        return new Response(
+          JSON.stringify({
+            items: [{ positionId: 9, instrumentId: 27, netProfit: -12.5, isBuy: true }],
+          }),
+          { status: 200 },
+        );
+      },
+    });
+    const history = await demo.getTradeHistory({ minDate: "2026-08-03" });
+    expect(history.items[0]?.positionId).toBe(9);
+  });
+
+  it("classifies demo InsufficientPermissions without treating it as a generic 401", async () => {
+    const { isInsufficientPermissions } = await import("./rest.js");
+    const error = new EtoroRestError({
+      status: 403,
+      requestId: "11111111-1111-4111-8111-111111111111",
+      body: JSON.stringify({ error: "InsufficientPermissions" }),
+    });
+    expect(isInsufficientPermissions({ error })).toBe(true);
+    expect(
+      isInsufficientPermissions({
+        error: new EtoroRestError({ status: 401, requestId: "x", body: "nope" }),
+      }),
+    ).toBe(false);
+  });
 });

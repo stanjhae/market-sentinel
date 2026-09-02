@@ -70,11 +70,54 @@ describe("api health and markets", () => {
     await app.close();
   });
 
+  it("refuses an invalid evaluate-plan body and accepts empty events", async () => {
+    const { app } = await buildServer();
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/risk/evaluate-plan",
+      payload: { symbol: "BTC", direction: "LONG" },
+    });
+    expect([400, 503]).toContain(invalid.statusCode);
+    const events = await app.inject({ method: "GET", url: "/events" });
+    expect([200, 503]).toContain(events.statusCode);
+    if (events.statusCode === 200) {
+      expect(Array.isArray(events.json().events)).toBe(true);
+    }
+    const settings = await app.inject({ method: "GET", url: "/settings" });
+    if (settings.statusCode === 200) {
+      expect(settings.json().risk.maxRiskPerTradePct).toBe(1);
+    }
+    await app.close();
+  });
+
   it("accepts watchlist symbols case-insensitively", async () => {
     const { app } = await buildServer();
     const response = await app.inject({ method: "GET", url: "/markets/us30/candles?timeframe=1h" });
     expect(response.statusCode).toBe(200);
     expect(response.json().symbol).toBe("US30");
+    await app.close();
+  });
+
+  it("refuses create-plan on an unknown signal even with a forged checklist", async () => {
+    const { app } = await buildServer();
+    const response = await app.inject({
+      method: "POST",
+      url: "/signals/00000000-0000-4000-8000-000000000000/create-plan",
+      payload: {
+        checklist: {
+          definedEntry: true,
+          definedStop: true,
+          minimumRr: true,
+          notRecovering: true,
+          notChasing: true,
+          knowHtf: true,
+          noBlackoutImminent: true,
+          wouldStillTake: true,
+        },
+        riskPct: "5",
+      },
+    });
+    expect([404, 503]).toContain(response.statusCode);
     await app.close();
   });
 });

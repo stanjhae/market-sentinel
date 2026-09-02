@@ -87,7 +87,7 @@ export async function loadAlertSettings(args: { db: Database }): Promise<AlertSe
 
 export async function publishDomainEvent(args: {
   redis: Redis;
-  event: { type: "signal" | "alert" | "stream"; payload: unknown };
+  event: { type: "signal" | "alert" | "stream" | "account" | "risk"; payload: unknown };
 }): Promise<void> {
   await args.redis.publish(REDIS_KEYS.eventsChannel, JSON.stringify(args.event));
 }
@@ -326,6 +326,84 @@ export async function maybeAlertStreamStale(args: {
   if (!created) {
     await context.redis.del(REDIS_KEYS.streamStaleEpisode).catch(() => undefined);
   }
+}
+
+export async function maybeAlertPositionChange(args: {
+  db: Database;
+  redis: Redis;
+  telegram?: TelegramCredentials;
+  type: "POSITION_DETECTED" | "POSITION_CLOSED";
+  symbol: string;
+  etoroPositionId: string;
+  direction: string;
+}): Promise<void> {
+  if (!shouldEmitAlert({ streamGate: "live", type: args.type })) {
+    return;
+  }
+  const copy = formatAlertCopy({
+    symbol: args.symbol,
+    direction: args.direction === "SHORT" ? "SHORT" : args.direction === "LONG" ? "LONG" : null,
+    headline: alertHeadline({ type: args.type }),
+    score: null,
+    timing: `Broker position ${args.etoroPositionId} ${args.type === "POSITION_DETECTED" ? "opened" : "closed"}.`,
+  });
+  await tryCreateAlert({
+    context: { db: args.db, redis: args.redis, streamGate: "live", telegram: args.telegram },
+    type: args.type,
+    instrument: { id: args.symbol, symbol: args.symbol as InstrumentRef["symbol"], etoroInstrumentId: 0 },
+    symbol: args.symbol,
+    signalId: null,
+    zoneId: null,
+    subjectId: args.etoroPositionId,
+    qualifier: args.type,
+    score: null,
+    direction: (args.direction === "SHORT" || args.direction === "LONG" ? args.direction : null) as SignalRecord["direction"] | null,
+    state: args.type,
+    title: copy.title,
+    body: copy.body,
+  });
+}
+
+export async function maybeAlertRiskLimit(args: {
+  db: Database;
+  redis: Redis;
+  telegram?: TelegramCredentials;
+  previousStatus: string;
+  nextStatus: string;
+  dailyPnl: string;
+  consecutiveLosses: number;
+}): Promise<void> {
+  if (args.previousStatus === args.nextStatus) {
+    return;
+  }
+  if (args.nextStatus !== "SESSION_BLOCKED" && args.nextStatus !== "NEWS_BLACKOUT") {
+    return;
+  }
+  if (!shouldEmitAlert({ streamGate: "live", type: "RISK_LIMIT_HIT" })) {
+    return;
+  }
+  const copy = formatAlertCopy({
+    symbol: "RISK",
+    direction: null,
+    headline: alertHeadline({ type: "RISK_LIMIT_HIT" }),
+    score: null,
+    timing: `Trading status ${args.nextStatus}. Daily P/L ${args.dailyPnl}. Consecutive losses ${args.consecutiveLosses}.`,
+  });
+  await tryCreateAlert({
+    context: { db: args.db, redis: args.redis, streamGate: "live", telegram: args.telegram },
+    type: "RISK_LIMIT_HIT",
+    instrument: { id: "risk", symbol: "US30", etoroInstrumentId: 0 },
+    symbol: "RISK",
+    signalId: null,
+    zoneId: null,
+    subjectId: "session",
+    qualifier: `${args.nextStatus}:${args.dailyPnl}:${args.consecutiveLosses}`,
+    score: null,
+    direction: null,
+    state: args.nextStatus,
+    title: copy.title,
+    body: copy.body,
+  });
 }
 
 export async function readCachedScore(args: { redis: Redis; symbol: string }): Promise<number | null> {

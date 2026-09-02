@@ -233,16 +233,23 @@ function SignalCard(args: { signal: SignalDto; dismissing: boolean; onDismiss: (
           <p className="text-foreground">{signal.state === "INVALIDATED" || signal.state === "EXPIRED" || signal.state === "DISMISSED" || signal.state === "CLOSED" ? signal.state : "—"}</p>
         </div>
       </div>
-      {signal.state !== "DISMISSED" && signal.state !== "CLOSED" && signal.state !== "INVALIDATED" && signal.state !== "EXPIRED" ? (
-        <button
-          type="button"
-          className="mt-3 font-mono text-xs uppercase text-destructive disabled:opacity-50"
-          disabled={args.dismissing}
-          onClick={() => void args.onDismiss({ id: signal.id })}
-        >
-          {args.dismissing ? "Dismissing…" : "Dismiss"}
-        </button>
-      ) : null}
+      <div className="mt-3 flex gap-4">
+        {signal.state === "WATCHING" || signal.state === "CONFIRMED" ? (
+          <Link href={`/trade-gate?signalId=${signal.id}`} className="font-mono text-xs uppercase text-foreground hover:text-live">
+            Open Trade Gate
+          </Link>
+        ) : null}
+        {signal.state !== "DISMISSED" && signal.state !== "CLOSED" && signal.state !== "INVALIDATED" && signal.state !== "EXPIRED" ? (
+          <button
+            type="button"
+            className="font-mono text-xs uppercase text-destructive disabled:opacity-50"
+            disabled={args.dismissing}
+            onClick={() => void args.onDismiss({ id: signal.id })}
+          >
+            {args.dismissing ? "Dismissing…" : "Dismiss"}
+          </button>
+        ) : null}
+      </div>
     </Card>
   );
 }

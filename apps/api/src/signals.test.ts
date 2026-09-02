@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { decidePlanGate } from "@market-sentinel/domain";
 import { emptySignals, matchesFilters, parseSignalFilters, toSignalDto } from "./signals.js";
 
 function signalRow(args: { symbol?: string; state?: string; triggerTimeframe?: string; score?: number }) {
@@ -60,6 +61,13 @@ describe("toSignalDto", () => {
     expect(dto.score).toBe(84);
     expect(dto.entryStatus).toBe("WAITING FOR CONFIRMATION");
     expect(emptySignals().available).toBe(false);
+  });
+});
+
+describe("decidePlanGate", () => {
+  it("blocks a forged complete checklist on WATCHING and on hard risk", () => {
+    expect(decidePlanGate({ allowed: false, checklistComplete: true, signalState: "CONFIRMED" })).toBe("BLOCKED");
+    expect(decidePlanGate({ allowed: true, checklistComplete: true, signalState: "WATCHING" })).toBe("NOT_CONFIRMED");
   });
 });
 

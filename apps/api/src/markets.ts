@@ -55,6 +55,9 @@ export function emptyAccount(): AccountResponse {
     availableCash: null,
     invested: null,
     unrealizedPnl: null,
+    realizedDailyPnl: null,
+    openPositionCount: null,
+    historyUnavailable: false,
     capturedAt: null,
   };
 }
@@ -101,7 +104,7 @@ export async function readAccount(redis: Redis): Promise<AccountResponse> {
   if (!raw) {
     return emptyAccount();
   }
-  return JSON.parse(raw) as AccountResponse;
+  return { ...emptyAccount(), ...(JSON.parse(raw) as Partial<AccountResponse>), available: true };
 }
 
 export async function readStructureSnapshot(args: {

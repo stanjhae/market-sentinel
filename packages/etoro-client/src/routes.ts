@@ -7,6 +7,10 @@ export const ETORO_ROUTES = {
   instrumentRates: "/api/v1/market-data/instruments/rates",
   aggregatePortfolioReal: "/api/v1/trading/info/aggregate-portfolio",
   aggregatePortfolioDemo: "/api/v1/trading/info/demo/aggregate-portfolio",
+  pnlReal: "/api/v1/trading/info/real/pnl",
+  pnlDemo: "/api/v1/trading/info/demo/pnl",
+  tradeHistoryReal: "/api/v1/trading/info/trade/history",
+  tradeHistoryDemo: "/api/v1/trading/info/trade/demo/history",
 } as const;
 
 export const ETORO_CANDLE_INTERVAL = {

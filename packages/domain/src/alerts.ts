@@ -16,7 +16,7 @@ export const ALERT_TYPES = [
 
 export type AlertType = (typeof ALERT_TYPES)[number];
 
-export const M6_STUB_ALERT_TYPES = ["RISK_LIMIT_HIT", "POSITION_DETECTED", "POSITION_CLOSED"] as const;
+export const M6_STUB_ALERT_TYPES = [] as const;
 
 export type AlertChannel = "in_app" | "browser" | "telegram";
 

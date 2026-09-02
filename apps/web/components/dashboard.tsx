@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountResponse, MarketsResponse, SseEvent } from "@market-sentinel/contracts";
+import type { AccountResponse, MarketsResponse, RiskStatus, SseEvent } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { API_BASE_URL } from "@/lib/api";
@@ -21,6 +21,7 @@ function freshnessVariant(value: string) {
 export function Dashboard({ symbols }: DashboardProps) {
   const [markets, setMarkets] = useState<MarketsResponse | null>(null);
   const [account, setAccount] = useState<AccountResponse | null>(null);
+  const [risk, setRisk] = useState<RiskStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,9 +29,10 @@ export function Dashboard({ symbols }: DashboardProps) {
 
     async function loadRest() {
       try {
-        const [marketsResponse, accountResponse] = await Promise.all([
+        const [marketsResponse, accountResponse, riskResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/markets`),
           fetch(`${API_BASE_URL}/account`),
+          fetch(`${API_BASE_URL}/risk/status`),
         ]);
         if (!marketsResponse.ok) {
           throw new Error(`API ${marketsResponse.status}`);
@@ -39,9 +41,11 @@ export function Dashboard({ symbols }: DashboardProps) {
         const accountPayload = accountResponse.ok
           ? ((await accountResponse.json()) as AccountResponse)
           : null;
+        const riskPayload = riskResponse.ok ? ((await riskResponse.json()) as RiskStatus) : null;
         if (!cancelled) {
           setMarkets(payload);
           setAccount(accountPayload);
+          setRisk(riskPayload);
           setError(null);
         }
       } catch (cause) {
@@ -63,6 +67,14 @@ export function Dashboard({ symbols }: DashboardProps) {
       setMarkets(event.payload);
       setError(null);
     }
+    if (event.type === "account" || event.type === "risk") {
+      void Promise.all([fetch(`${API_BASE_URL}/account`), fetch(`${API_BASE_URL}/risk/status`)])
+        .then(async ([accountResponse, riskResponse]) => {
+          if (accountResponse.ok) setAccount((await accountResponse.json()) as AccountResponse);
+          if (riskResponse.ok) setRisk((await riskResponse.json()) as RiskStatus);
+        })
+        .catch(() => undefined);
+    }
     if (event.type === "signal") {
       void fetch(`${API_BASE_URL}/markets`)
         .then((response) => (response.ok ? response.json() : null))
@@ -80,6 +92,14 @@ export function Dashboard({ symbols }: DashboardProps) {
 
   return (
     <div className="space-y-6">
+      {risk && risk.tradingStatus !== "ACTIVE" ? (
+        <Card>
+          <Badge variant="stale">{risk.newsBlackout ? "NEWS BLACKOUT ACTIVE" : risk.tradingStatus.replaceAll("_", " ")}</Badge>
+          <p className="mt-2 font-mono text-xs text-muted-foreground">
+            Today P/L {risk.dailyPnl ?? "—"} · Remaining {risk.riskRemainingUsd ?? "—"} · Losses {risk.consecutiveLosses}
+          </p>
+        </Card>
+      ) : null}
       <section className="grid gap-3 md:grid-cols-5">
         <Card>
           <p className="text-xs uppercase text-muted-foreground">eToro</p>
@@ -102,6 +122,24 @@ export function Dashboard({ symbols }: DashboardProps) {
         <Card>
           <p className="text-xs uppercase text-muted-foreground">API</p>
           <p className="mt-2 font-mono text-sm">{error ?? "Live"}</p>
+        </Card>
+      </section>
+      <section className="grid gap-3 md:grid-cols-4">
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">Trading status</p>
+          <p className="mt-2 font-mono text-sm">{risk?.tradingStatus ?? "—"}</p>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">Today P/L</p>
+          <p className="mt-2 font-mono text-sm">{risk?.dailyPnl ?? account?.realizedDailyPnl ?? "—"}</p>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">Risk remaining</p>
+          <p className="mt-2 font-mono text-sm">{risk?.riskRemainingUsd ?? "—"}</p>
+        </Card>
+        <Card>
+          <p className="text-xs uppercase text-muted-foreground">Consecutive losses</p>
+          <p className="mt-2 font-mono text-sm">{risk?.consecutiveLosses ?? "—"}</p>
         </Card>
       </section>
 

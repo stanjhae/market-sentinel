@@ -1,6 +1,6 @@
 import { hasEtoroCredentials, type Env } from "@market-sentinel/config";
 import { REDIS_KEYS } from "@market-sentinel/contracts";
-import { createDb, instruments, auditLogs, accountSnapshots } from "@market-sentinel/db";
+import { createDb, instruments, auditLogs } from "@market-sentinel/db";
 import {
   TIMEFRAMES,
   WATCHLIST,
@@ -29,6 +29,7 @@ import {
 } from "./candle-store.js";
 import { createSerialQueue } from "./serial-queue.js";
 import { maybeAlertStreamStale, publishDomainEvent } from "./alert-store.js";
+import { syncAccountAndRisk } from "./account-store.js";
 import { evaluateSignals } from "./signal-store.js";
 import { evaluateStructure } from "./structure-store.js";
 
@@ -240,39 +241,19 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
     },
   );
 
-  const syncAccount = async () => {
-    try {
-      const { data } = await rest.getAggregatedPortfolio();
-      const snapshot = {
-        available: true,
-        accountType: env.ETORO_ACCOUNT_TYPE === "demo" ? "DEMO" : "REAL",
-        equity: data.accountTotals?.accountTotalValue?.toString() ?? null,
-        cash: data.accountTotals?.accountBalance?.toString() ?? null,
-        availableCash: data.accountTotals?.accountAvailableCash?.toString() ?? null,
-        invested: data.accountTotals?.accountTotalUsedMargin?.toString() ?? null,
-        unrealizedPnl: data.accountTotals?.accountCurrentPnl?.toString() ?? null,
-        capturedAt: data.timestamp ?? new Date().toISOString(),
-      };
-      await redis.set(REDIS_KEYS.account, JSON.stringify(snapshot));
-      await dbPair.db
-        .insert(accountSnapshots)
-        .values({
-          id: randomUUID(),
-          timestamp: new Date(snapshot.capturedAt),
-          accountType: snapshot.accountType,
-          equity: snapshot.equity,
-          cash: snapshot.cash,
-          availableCash: snapshot.availableCash,
-          invested: snapshot.invested,
-          unrealizedPnl: snapshot.unrealizedPnl,
-          rawPayloadJson: data,
-        })
-        .catch((error: unknown) => {
-          logger.warn({ err: error }, "account snapshot persist skipped");
-        });
-    } catch (error) {
-      logger.warn({ err: error }, "account sync failed");
-    }
+  const accountQueue = createSerialQueue();
+  const syncAccount = async (args?: { force?: boolean }) => {
+    await accountQueue.enqueue({
+      task: () =>
+        syncAccountAndRisk({
+          db: dbPair.db,
+          redis,
+          rest,
+          accountType: env.ETORO_ACCOUNT_TYPE,
+          telegram,
+          force: args?.force,
+        }),
+    });
   };
 
   const backfill = async () => {
@@ -349,6 +330,16 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
   const accountTimer = setInterval(() => {
     void syncAccount();
   }, 60_000);
+  const forceTimer = setInterval(() => {
+    void (async () => {
+      const force = await redis.get(REDIS_KEYS.forceAccountSync);
+      if (!force) {
+        return;
+      }
+      await redis.del(REDIS_KEYS.forceAccountSync);
+      await syncAccount({ force: true });
+    })();
+  }, 2_000);
   const reconcileTimer = setInterval(() => {
     void reconcile();
   }, 120_000);
@@ -356,6 +347,7 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
   return {
     stop: async () => {
       clearInterval(accountTimer);
+      clearInterval(forceTimer);
       clearInterval(reconcileTimer);
       stream.stop();
       await dbPair.client.end({ timeout: 2 }).catch(() => undefined);

@@ -1,6 +1,6 @@
-import { alertSettingsSchema, type SettingsResponse } from "@market-sentinel/contracts";
+import { alertSettingsSchema, riskProfileSchema, type SettingsResponse } from "@market-sentinel/contracts";
 import { appSettings, type Database } from "@market-sentinel/db";
-import { DEFAULT_ALERT_SETTINGS, mergeAlertSettings } from "@market-sentinel/domain";
+import { DEFAULT_ALERT_SETTINGS, DEFAULT_RISK_PROFILE, mergeAlertSettings, mergeRiskProfile } from "@market-sentinel/domain";
 import { eq } from "drizzle-orm";
 
 export function emptySettings(args: { telegramConfigured: boolean }): SettingsResponse {
@@ -8,7 +8,7 @@ export function emptySettings(args: { telegramConfigured: boolean }): SettingsRe
     available: false,
     telegramConfigured: args.telegramConfigured,
     alerts: DEFAULT_ALERT_SETTINGS,
-    risk: {},
+    risk: DEFAULT_RISK_PROFILE,
     markets: {},
   };
 }
@@ -19,7 +19,7 @@ export async function readSettings(args: { db: Database; telegramConfigured: boo
     available: true,
     telegramConfigured: args.telegramConfigured,
     alerts: mergeAlertSettings({ raw: row.alertsJson }),
-    risk: (row.riskJson as Record<string, unknown>) ?? {},
+    risk: mergeRiskProfile({ raw: row.riskJson }),
     markets: (row.marketsJson as Record<string, unknown>) ?? {},
   };
 }
@@ -75,12 +75,25 @@ export async function patchJsonBucket(args: {
   bucket: "risk" | "markets";
   patch: unknown;
 }): Promise<{ ok: true; settings: SettingsResponse } | { ok: false; error: string }> {
+  if (args.bucket === "risk") {
+    const parsed = riskProfileSchema.partial().safeParse(args.patch);
+    if (!parsed.success) {
+      return { ok: false, error: "invalid risk settings" };
+    }
+    const row = await ensureSettingsRow({ db: args.db });
+    const next = mergeRiskProfile({ raw: { ...mergeRiskProfile({ raw: row.riskJson }), ...parsed.data } });
+    await args.db
+      .update(appSettings)
+      .set({ riskJson: next, updatedAt: new Date() })
+      .where(eq(appSettings.id, "default"));
+    return { ok: true, settings: await readSettings({ db: args.db, telegramConfigured: args.telegramConfigured }) };
+  }
   const parsed = parseJsonBucketPatch({ patch: args.patch });
   if (!parsed.ok) {
     return parsed;
   }
   const row = await ensureSettingsRow({ db: args.db });
-  const current = (args.bucket === "risk" ? row.riskJson : row.marketsJson) as Record<string, unknown>;
+  const current = row.marketsJson as Record<string, unknown>;
   const next = { ...current, ...parsed.value };
   const merged = parseJsonBucketPatch({ patch: next });
   if (!merged.ok) {
@@ -89,8 +102,7 @@ export async function patchJsonBucket(args: {
   await args.db
     .update(appSettings)
     .set({
-      riskJson: args.bucket === "risk" ? merged.value : row.riskJson,
-      marketsJson: args.bucket === "markets" ? merged.value : row.marketsJson,
+      marketsJson: merged.value,
       updatedAt: new Date(),
     })
     .where(eq(appSettings.id, "default"));
@@ -105,7 +117,7 @@ async function ensureSettingsRow(args: { db: Database }) {
   await args.db.insert(appSettings).values({
     id: "default",
     alertsJson: DEFAULT_ALERT_SETTINGS,
-    riskJson: {},
+    riskJson: DEFAULT_RISK_PROFILE,
     marketsJson: {},
     updatedAt: new Date(),
   });

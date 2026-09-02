@@ -11,4 +11,8 @@ export const REDIS_KEYS = {
   signals: (symbol: string) => `sentinel:signals:${symbol}`,
   eventsChannel: "sentinel:events",
   streamStaleEpisode: "sentinel:stream:stale-episode",
+  risk: "sentinel:risk",
+  positions: "sentinel:positions",
+  lastAccountSyncAt: "sentinel:account:last-sync",
+  forceAccountSync: "sentinel:account:force-sync",
 } as const;

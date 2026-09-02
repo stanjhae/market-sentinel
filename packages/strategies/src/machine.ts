@@ -1,6 +1,6 @@
 import { isTerminalSignalState, type SignalState, type StreamFreshness } from "@market-sentinel/domain";
 import { STRATEGY_DEFAULTS } from "./defaults.js";
-import { scoreOpportunity } from "./score.js";
+import { scoreOpportunity, type ScoreRiskInput } from "./score.js";
 import type { SignalRecord, StrategyEvaluation, StrategySnapshot, TransitionResult } from "./types.js";
 
 const FORWARD: Record<SignalState, SignalState[]> = {
@@ -125,6 +125,7 @@ export function applySignalTransition(args: {
   barsElapsed15m: number;
   idFactory: () => string;
   symbol: string;
+  risk?: ScoreRiskInput;
 }): TransitionResult {
   if (streamEvaluationFrozen({ freshness: args.snapshot.streamFreshness })) {
     return { next: args.current, changed: false, event: null };
@@ -132,7 +133,7 @@ export function applySignalTransition(args: {
   if (args.current && args.current.lastEvaluatedOpenTimeUtc.getTime() === args.snapshot.lastFinalOpenTimeUtc.getTime()) {
     return { next: args.current, changed: false, event: null };
   }
-  const score = scoreOpportunity({ snapshot: args.snapshot, evaluation: args.evaluation });
+  const score = scoreOpportunity({ snapshot: args.snapshot, evaluation: args.evaluation, risk: args.risk });
   if (!args.current) {
     if (args.evaluation.proposedState === "NONE" || args.evaluation.proposedState === "INVALIDATED" || args.evaluation.proposedState === "EXPIRED") {
       return { next: null, changed: false, event: null };
@@ -225,8 +226,8 @@ export function createPlanStub(args: { current: SignalRecord; now: Date }): Tran
     record: next,
     state: "TRADE_PLANNED",
     at: args.now,
-    evidence: { plan: { status: "STUB", signalId: args.current.id } },
+    evidence: { plan: { status: "TRADE_PLANNED", signalId: args.current.id } },
   });
-  next.snapshotJson = { ...next.snapshotJson, plan: { status: "STUB", signalId: args.current.id } };
+  next.snapshotJson = { ...next.snapshotJson, plan: { status: "TRADE_PLANNED", signalId: args.current.id } };
   return { next, changed: true, event: "SIGNAL_STATE_CHANGED" };
 }
