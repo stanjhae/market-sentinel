@@ -1,6 +1,6 @@
 import { REDIS_KEYS } from "@market-sentinel/contracts";
 import { auditLogs, candles, marketRegimes, pivots, priceZones, type Database } from "@market-sentinel/db";
-import { TIMEFRAME_MS, TIMEFRAMES, type Timeframe } from "@market-sentinel/domain";
+import { TIMEFRAME_MS, TIMEFRAMES, type Location, type Timeframe } from "@market-sentinel/domain";
 import { atrWilderSeries } from "@market-sentinel/indicators";
 import {
   applyZoneBreaks,
@@ -11,6 +11,7 @@ import {
   expireIdleZones,
   mergeAutoZones,
   mergePriorZones,
+  nearestZone,
   priorPeriodZones,
   reactionAfterTouch,
   scoreZoneStrength,
@@ -20,6 +21,7 @@ import {
 import { and, desc, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
+import { maybeAlertMajorLevel, maybeAlertZoneTransitions, type TelegramCredentials } from "./alert-store.js";
 import type { InstrumentRef } from "./candle-store.js";
 
 const STRUCTURE_LOOKBACK = 500;
@@ -30,6 +32,8 @@ export async function evaluateStructure(args: {
   instrument: InstrumentRef;
   timeframe: Timeframe;
   now?: Date;
+  streamGate?: "live" | "historical";
+  telegram?: TelegramCredentials;
 }): Promise<void> {
   const now = args.now ?? new Date();
   const rows = await args.db
@@ -132,6 +136,15 @@ export async function evaluateStructure(args: {
     next: merged,
   });
 
+  const previousLocation = (
+    await args.db
+      .select()
+      .from(marketRegimes)
+      .where(and(eq(marketRegimes.instrumentId, args.instrument.id), eq(marketRegimes.timeframe, args.timeframe)))
+      .orderBy(desc(marketRegimes.timestamp))
+      .limit(1)
+  )[0]?.location as Location | undefined;
+
   const swings = classifySwings({ pivots: confirmed, atr });
   const allZones = [...otherTf, ...merged];
   const regime = classifyRegime({
@@ -186,15 +199,57 @@ export async function evaluateStructure(args: {
     instrumentId: args.instrument.id,
     payloadJson: { timeframe: args.timeframe, count: merged.length },
   });
+
+  const context = {
+    db: args.db,
+    redis: args.redis,
+    streamGate: args.streamGate ?? "live",
+    telegram: args.telegram,
+    now,
+  };
+  await maybeAlertZoneTransitions({
+    context,
+    instrument: args.instrument,
+    previous: thisTf,
+    next: merged,
+  });
+  const close = last.close;
+  const atrForNear = atr;
+  const supportOrResistance =
+    regime.location === "AT_SUPPORT" || regime.location === "AT_RESISTANCE"
+      ? nearestZone({
+          price: close,
+          zones: allZones,
+          atr: atrForNear,
+          type: regime.location === "AT_SUPPORT" ? "SUPPORT" : "RESISTANCE",
+        })
+      : null;
+  await maybeAlertMajorLevel({
+    context,
+    instrument: args.instrument,
+    previousLocation: previousLocation ?? null,
+    nextLocation: regime.location,
+    nearestZone: supportOrResistance?.zone ?? null,
+    evaluatedOpenTimeUtc: last.openTimeUtc,
+  });
 }
 
 export async function evaluateInstrumentStructure(args: {
   db: Database;
   redis: Redis;
   instrument: InstrumentRef;
+  streamGate?: "live" | "historical";
+  telegram?: TelegramCredentials;
 }): Promise<void> {
   for (const timeframe of TIMEFRAMES) {
-    await evaluateStructure({ db: args.db, redis: args.redis, instrument: args.instrument, timeframe });
+    await evaluateStructure({
+      db: args.db,
+      redis: args.redis,
+      instrument: args.instrument,
+      timeframe,
+      streamGate: args.streamGate,
+      telegram: args.telegram,
+    });
   }
 }
 

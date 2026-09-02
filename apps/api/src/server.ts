@@ -1,19 +1,33 @@
 import cors from "@fastify/cors";
-import { hasEtoroCredentials } from "@market-sentinel/config";
+import { hasEtoroCredentials, hasTelegramCredentials } from "@market-sentinel/config";
+import { REDIS_KEYS, sseEventSchema } from "@market-sentinel/contracts";
 import { createDb } from "@market-sentinel/db";
 import { parseWatchlistSymbol } from "@market-sentinel/domain";
 import Fastify from "fastify";
 import { Redis } from "ioredis";
+import {
+  countUnreadAlerts,
+  emptyAlerts,
+  markAlertRead,
+  markAllAlertsRead,
+  parseStreamSnapshot,
+  publishUnreadSnapshot,
+  readAlerts,
+} from "./alerts.js";
 import { emptyCandles, emptyContext, parseIsoDateQuery, parseTimeframeQuery, readCandles, readMarketContext } from "./candles.js";
 import { loadApiEnv } from "./env.js";
 import { disconnectedMarkets, emptyAccount, readAccount, readMarkets } from "./markets.js";
+import { emptySettings, patchAlertSettings, patchJsonBucket, readSettings } from "./settings.js";
 import { createManualZone, deleteManualZone, emptyZones, parseManualZoneBody, readZones, updateManualZone } from "./zones.js";
 import { dismissStoredSignal, emptySignalDetail, emptySignals, parseSignalFilters, readSignal, readSignals, stubCreatePlan } from "./signals.js";
 
 export async function buildServer() {
   const env = loadApiEnv();
   const app = Fastify({ logger: false });
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: true,
+    methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"],
+  });
   const redis = new Redis(env.REDIS_URL, {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
@@ -253,7 +267,118 @@ export async function buildServer() {
     if (result === "terminal") {
       return reply.code(409).send({ error: "signal already closed" });
     }
-    return readSignal({ db: dbPair.db, id: params.id });
+    const detail = await readSignal({ db: dbPair.db, id: params.id });
+    if (detail.signal) {
+      await redis.publish(
+        REDIS_KEYS.eventsChannel,
+        JSON.stringify({
+          type: "signal",
+          payload: {
+            id: detail.signal.id,
+            instrumentId: detail.signal.instrumentId,
+            symbol: detail.signal.symbol,
+            state: detail.signal.state,
+            score: detail.signal.score,
+          },
+        }),
+      );
+    }
+    return detail;
+  });
+
+  app.get("/alerts", async (request) => {
+    const query = request.query as { unread?: string };
+    if (!(await pingDatabase())) {
+      return emptyAlerts();
+    }
+    try {
+      return await readAlerts({ db: dbPair.db, redis, unreadOnly: query.unread === "true" });
+    } catch {
+      return emptyAlerts();
+    }
+  });
+
+  app.post("/alerts/:id/read", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const result = await markAlertRead({ db: dbPair.db, id: params.id });
+    if (result === "not_found") {
+      return reply.code(404).send({ error: "alert not found" });
+    }
+    const unreadCount = await countUnreadAlerts({ db: dbPair.db });
+    await publishUnreadSnapshot({ redis, unreadCount }).catch(() => undefined);
+    return { ok: true as const };
+  });
+
+  app.post("/alerts/read-all", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const count = await markAllAlertsRead({ db: dbPair.db });
+    const unreadCount = await countUnreadAlerts({ db: dbPair.db });
+    await publishUnreadSnapshot({ redis, unreadCount }).catch(() => undefined);
+    return { ok: true as const, count };
+  });
+
+  app.get("/settings", async () => {
+    const telegramConfigured = hasTelegramCredentials({ env });
+    if (!(await pingDatabase())) {
+      return emptySettings({ telegramConfigured });
+    }
+    try {
+      return await readSettings({ db: dbPair.db, telegramConfigured });
+    } catch {
+      return emptySettings({ telegramConfigured });
+    }
+  });
+
+  app.patch("/settings/alerts", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const result = await patchAlertSettings({
+      db: dbPair.db,
+      telegramConfigured: hasTelegramCredentials({ env }),
+      patch: request.body,
+    });
+    if (!result.ok) {
+      return reply.code(400).send({ error: result.error });
+    }
+    return result.settings;
+  });
+
+  app.patch("/settings/risk", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const result = await patchJsonBucket({
+      db: dbPair.db,
+      telegramConfigured: hasTelegramCredentials({ env }),
+      bucket: "risk",
+      patch: request.body,
+    });
+    if (!result.ok) {
+      return reply.code(400).send({ error: result.error });
+    }
+    return result.settings;
+  });
+
+  app.patch("/settings/markets", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const result = await patchJsonBucket({
+      db: dbPair.db,
+      telegramConfigured: hasTelegramCredentials({ env }),
+      bucket: "markets",
+      patch: request.body,
+    });
+    if (!result.ok) {
+      return reply.code(400).send({ error: result.error });
+    }
+    return result.settings;
   });
 
   app.post("/signals/:id/create-plan", async (request, reply) => {
@@ -295,11 +420,60 @@ export async function buildServer() {
     };
 
     await write();
+    const unreadCount = (await pingDatabase())
+      ? await countUnreadAlerts({ db: dbPair.db }).catch(() => 0)
+      : 0;
+    const stream = parseStreamSnapshot({
+      raw: (await pingRedis()) ? await redis.get(REDIS_KEYS.stream).catch(() => null) : null,
+    });
+    reply.raw.write(
+      `data: ${JSON.stringify({
+        type: "stream",
+        payload: {
+          streamStatus: stream.streamStatus,
+          lastQuoteAt: stream.lastQuoteAt,
+          unreadCount,
+        },
+      })}\n\n`,
+    );
+
+    const subscriber = new Redis(env.REDIS_URL, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+      retryStrategy: () => null,
+    });
+    subscriber.on("error", () => {
+      // Stream stays open; the 2s markets poll remains the fallback.
+    });
+    try {
+      if (subscriber.status !== "ready") {
+        await subscriber.connect();
+      }
+      await subscriber.subscribe(REDIS_KEYS.eventsChannel);
+      subscriber.on("message", (_channel, message) => {
+        try {
+          const parsed = sseEventSchema.safeParse(JSON.parse(message));
+          if (!parsed.success) {
+            return;
+          }
+          if (parsed.data.type === "account" || parsed.data.type === "risk") {
+            return;
+          }
+          reply.raw.write(`data: ${JSON.stringify(parsed.data)}\n\n`);
+        } catch {
+          // ignore malformed pub/sub frames
+        }
+      });
+    } catch {
+      subscriber.disconnect();
+    }
+
     const timer = setInterval(() => {
       void write();
     }, 2000);
     request.raw.on("close", () => {
       clearInterval(timer);
+      subscriber.disconnect();
     });
   });
 

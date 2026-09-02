@@ -1,11 +1,12 @@
 "use client";
 
-import type { SignalDto, SignalsResponse } from "@market-sentinel/contracts";
+import type { SignalDto, SignalsResponse, SseEvent } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { API_BASE_URL } from "@/lib/api";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSentinelEvents } from "./sentinel-stream";
 
 const STRATEGIES = ["breakdown-retest", "sweep-reclaim", "trend-pullback", "do-not-chase"] as const;
 const STATES = ["DETECTED", "WATCHING", "CONFIRMED", "TRADE_PLANNED", "INVALIDATED", "EXPIRED", "DISMISSED"] as const;
@@ -33,34 +34,47 @@ export function SignalsBoard() {
     return params.toString();
   }, [scope, instrument, strategy, direction, state, timeframe, minScore]);
 
+  const load = useCallback(async () => {
+    const response = await fetch(`${API_BASE_URL}/signals?${query}`);
+    if (!response.ok) {
+      throw new Error(`API ${response.status}`);
+    }
+    return (await response.json()) as SignalsResponse;
+  }, [query]);
+
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      try {
-        const response = await fetch(`${API_BASE_URL}/signals?${query}`);
-        if (!response.ok) {
-          throw new Error(`API ${response.status}`);
-        }
-        const next = (await response.json()) as SignalsResponse;
+    void load()
+      .then((next) => {
         if (!cancelled) {
           setPayload(next);
           setError(null);
         }
-      } catch (cause) {
+      })
+      .catch((cause: unknown) => {
         if (!cancelled) {
           setError(cause instanceof Error ? cause.message : "API unavailable");
         }
-      }
-    }
-    void load();
-    const timer = setInterval(() => {
-      void load();
-    }, 4000);
+      });
     return () => {
       cancelled = true;
-      clearInterval(timer);
     };
-  }, [query]);
+  }, [load]);
+
+  const onStreamEvent = useCallback(
+    (event: SseEvent) => {
+      if (event.type === "signal" || event.type === "alert") {
+        void load()
+          .then((next) => {
+            setPayload(next);
+            setError(null);
+          })
+          .catch(() => undefined);
+      }
+    },
+    [load],
+  );
+  useSentinelEvents({ onEvent: onStreamEvent });
 
   async function dismiss(args: { id: string }) {
     if (dismissingId) {

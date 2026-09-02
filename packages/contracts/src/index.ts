@@ -239,6 +239,64 @@ export const healthReadySchema = z.object({
   }),
 });
 
+export const alertTypeSchema = z.enum([
+  "WATCHLIST_OPPORTUNITY",
+  "ENTRY_CONFIRMATION",
+  "SIGNAL_INVALIDATED",
+  "DO_NOT_CHASE",
+  "MAJOR_LEVEL_APPROACHING",
+  "PRICE_ZONE_BROKEN",
+  "RETEST_DETECTED",
+  "RISK_LIMIT_HIT",
+  "STREAM_STALE",
+  "POSITION_DETECTED",
+  "POSITION_CLOSED",
+]);
+
+export const alertDtoSchema = z.object({
+  id: z.string(),
+  type: alertTypeSchema,
+  instrumentId: z.string(),
+  symbol: z.string(),
+  signalId: z.string().nullable(),
+  zoneId: z.string().nullable(),
+  title: z.string(),
+  body: z.string(),
+  score: z.number().int().nullable(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]).nullable(),
+  state: z.string().nullable(),
+  dedupeKey: z.string(),
+  channels: z.array(z.enum(["in_app", "browser", "telegram"])),
+  readAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export const alertsResponseSchema = z.object({
+  available: z.boolean(),
+  staleStream: z.boolean(),
+  unreadCount: z.number().int(),
+  alerts: z.array(alertDtoSchema),
+});
+
+export const alertSettingsSchema = z.object({
+  enabled: z.boolean(),
+  browserEnabled: z.boolean(),
+  telegramEnabled: z.boolean(),
+  scoreThreshold: z.number().int().min(0).max(100),
+  scoreDelta: z.number().int().min(1).max(100),
+  cooldownMinutes: z.number().int().min(0).max(24 * 60),
+  mutedTypes: z.array(alertTypeSchema),
+  mutedSymbols: z.array(z.enum(["US30", "US100", "SPX500", "GOLD"])),
+});
+
+export const settingsResponseSchema = z.object({
+  available: z.boolean(),
+  telegramConfigured: z.boolean(),
+  alerts: alertSettingsSchema,
+  risk: z.record(z.unknown()),
+  markets: z.record(z.unknown()),
+});
+
 export const sseEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("markets"),
@@ -249,7 +307,30 @@ export const sseEventSchema = z.discriminatedUnion("type", [
     payload: z.object({
       streamStatus: z.enum(["LIVE", "DELAYED", "STALE", "DISCONNECTED"]),
       lastQuoteAt: z.string().nullable(),
+      unreadCount: z.number().int().optional(),
     }),
+  }),
+  z.object({
+    type: z.literal("signal"),
+    payload: z.object({
+      id: z.string(),
+      instrumentId: z.string(),
+      symbol: z.string(),
+      state: z.string(),
+      score: z.number().int(),
+    }),
+  }),
+  z.object({
+    type: z.literal("alert"),
+    payload: alertDtoSchema,
+  }),
+  z.object({
+    type: z.literal("account"),
+    payload: z.object({}).optional(),
+  }),
+  z.object({
+    type: z.literal("risk"),
+    payload: z.object({}).optional(),
   }),
 ]);
 
@@ -270,3 +351,7 @@ export type SignalDto = z.infer<typeof signalDtoSchema>;
 export type SignalsResponse = z.infer<typeof signalsResponseSchema>;
 export type SignalDetailResponse = z.infer<typeof signalDetailResponseSchema>;
 export type CreatePlanResponse = z.infer<typeof createPlanResponseSchema>;
+export type AlertDto = z.infer<typeof alertDtoSchema>;
+export type AlertsResponse = z.infer<typeof alertsResponseSchema>;
+export type AlertSettingsDto = z.infer<typeof alertSettingsSchema>;
+export type SettingsResponse = z.infer<typeof settingsResponseSchema>;

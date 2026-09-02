@@ -1,11 +1,12 @@
 "use client";
 
-import type { AccountResponse, MarketsResponse } from "@market-sentinel/contracts";
+import type { AccountResponse, MarketsResponse, SseEvent } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { API_BASE_URL } from "@/lib/api";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useSentinelEvents } from "./sentinel-stream";
 
 type DashboardProps = {
   symbols: string[];
@@ -52,29 +53,28 @@ export function Dashboard({ symbols }: DashboardProps) {
 
     void loadRest();
 
-    const source = new EventSource(`${API_BASE_URL}/stream`);
-    source.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data) as { type?: string; payload?: MarketsResponse };
-        if (parsed.type === "markets" && parsed.payload && !cancelled) {
-          setMarkets(parsed.payload);
-          setError(null);
-        }
-      } catch {
-        // ignore malformed SSE frames
-      }
-    };
-    source.onerror = () => {
-      if (!cancelled) {
-        setError("stream disconnected");
-      }
-    };
-
     return () => {
       cancelled = true;
-      source.close();
     };
   }, []);
+
+  const onStreamEvent = useCallback((event: SseEvent) => {
+    if (event.type === "markets") {
+      setMarkets(event.payload);
+      setError(null);
+    }
+    if (event.type === "signal") {
+      void fetch(`${API_BASE_URL}/markets`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload: MarketsResponse | null) => {
+          if (payload) {
+            setMarkets(payload);
+          }
+        })
+        .catch(() => undefined);
+    }
+  }, []);
+  useSentinelEvents({ onEvent: onStreamEvent });
 
   const status = markets?.streamStatus ?? "DISCONNECTED";
 

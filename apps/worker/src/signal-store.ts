@@ -23,6 +23,13 @@ import { createLogger } from "@market-sentinel/observability";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
+import {
+  maybeAlertScoreCross,
+  maybeAlertSignalTransition,
+  publishSignalChanged,
+  readCachedScore,
+  type TelegramCredentials,
+} from "./alert-store.js";
 import type { InstrumentRef } from "./candle-store.js";
 
 const logger = createLogger("worker-signals");
@@ -82,6 +89,7 @@ export async function evaluateSignals(args: {
   staleAfterMs?: number;
   now?: Date;
   streamGate?: "live" | "historical";
+  telegram?: TelegramCredentials;
 }): Promise<void> {
   const snapshot = await loadStrategySnapshot({
     db: args.db,
@@ -94,6 +102,7 @@ export async function evaluateSignals(args: {
   if (!snapshot) {
     return;
   }
+  const previousScore = await readCachedScore({ redis: args.redis, symbol: args.instrument.symbol });
   const evaluations = evaluateAllStrategies({ snapshot });
   const openRows = await args.db
     .select()
@@ -105,10 +114,13 @@ export async function evaluateSignals(args: {
     processed.add(`${evaluation.strategyKey}:${evaluation.direction}`);
     await applyAndPersist({
       db: args.db,
+      redis: args.redis,
       instrument: args.instrument,
       snapshot,
       evaluation,
       current: openByKey.get(`${evaluation.strategyKey}:${evaluation.direction}`) ?? null,
+      streamGate: args.streamGate ?? "live",
+      telegram: args.telegram,
     });
   }
   for (const row of openRows) {
@@ -118,6 +130,7 @@ export async function evaluateSignals(args: {
     }
     await applyAndPersist({
       db: args.db,
+      redis: args.redis,
       instrument: args.instrument,
       snapshot,
       evaluation: emptyEvaluation({
@@ -127,17 +140,42 @@ export async function evaluateSignals(args: {
         evidence: { reason: "missing-direction" },
       }),
       current: row,
+      streamGate: args.streamGate ?? "live",
+      telegram: args.telegram,
     });
   }
   await cacheSignalSummary({ db: args.db, redis: args.redis, instrument: args.instrument });
+  const nextScore = await readCachedScore({ redis: args.redis, symbol: args.instrument.symbol });
+  const bestRows = await args.db
+    .select()
+    .from(signals)
+    .where(and(eq(signals.instrumentId, args.instrument.id), inArray(signals.state, [...OPEN_STATES])));
+  const best = bestOpenTradeSetup({ records: bestRows });
+  await maybeAlertScoreCross({
+    context: {
+      db: args.db,
+      redis: args.redis,
+      streamGate: args.streamGate ?? "live",
+      telegram: args.telegram,
+      now: args.now,
+    },
+    instrument: args.instrument,
+    previousScore,
+    nextScore,
+    record: best ? rowToSignal({ row: best }) : null,
+    evaluatedOpenTimeUtc: snapshot.lastFinalOpenTimeUtc,
+  });
 }
 
 async function applyAndPersist(args: {
   db: Database;
+  redis: Redis;
   instrument: InstrumentRef;
   snapshot: StrategySnapshot;
   evaluation: ReturnType<typeof evaluateAllStrategies>[number];
   current: typeof signals.$inferSelect | null;
+  streamGate: "live" | "historical";
+  telegram?: TelegramCredentials;
 }): Promise<void> {
   const current = args.current ? rowToSignal({ row: args.current }) : null;
   const lastProgress = current?.watchingAt ?? current?.confirmedAt ?? current?.detectedAt ?? args.snapshot.lastFinalOpenTimeUtc;
@@ -155,17 +193,32 @@ async function applyAndPersist(args: {
   }
   try {
     await persistSignal({ db: args.db, record: result.next });
-    if (result.changed && result.event) {
-      await args.db.insert(auditLogs).values({
-        id: randomUUID(),
-        eventType: result.event,
-        instrumentId: args.instrument.id,
-        payloadJson: {
-          signalId: result.next.id,
-          strategyKey: result.next.strategyKey,
-          state: result.next.state,
-          direction: result.next.direction,
+    if (result.changed) {
+      if (result.event) {
+        await args.db.insert(auditLogs).values({
+          id: randomUUID(),
+          eventType: result.event,
+          instrumentId: args.instrument.id,
+          payloadJson: {
+            signalId: result.next.id,
+            strategyKey: result.next.strategyKey,
+            state: result.next.state,
+            direction: result.next.direction,
+          },
+        });
+      }
+      await publishSignalChanged({ redis: args.redis, record: result.next });
+      await maybeAlertSignalTransition({
+        context: {
+          db: args.db,
+          redis: args.redis,
+          streamGate: args.streamGate,
+          telegram: args.telegram,
+          now: args.snapshot.evaluatedAt,
         },
+        instrument: args.instrument,
+        previousState: current?.state ?? null,
+        next: result.next,
       });
     }
   } catch (error) {
