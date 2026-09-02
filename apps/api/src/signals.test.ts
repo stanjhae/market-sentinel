@@ -16,6 +16,8 @@ function signalRow(args: { symbol?: string; state?: string; triggerTimeframe?: s
     watchingAt: new Date("2026-09-01T12:15:00.000Z"),
     confirmedAt: null,
     tradePlannedAt: null,
+    enteredAt: null,
+    closedAt: null,
     invalidatedAt: null,
     expiredAt: null,
     dismissedAt: null,

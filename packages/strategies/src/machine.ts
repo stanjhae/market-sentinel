@@ -47,6 +47,12 @@ function applyTimestamps(args: { record: SignalRecord; state: SignalState; now: 
   if (args.state === "TRADE_PLANNED") {
     next.tradePlannedAt = args.now;
   }
+  if (args.state === "ENTERED") {
+    next.enteredAt = args.now;
+  }
+  if (args.state === "CLOSED") {
+    next.closedAt = args.now;
+  }
   if (args.state === "INVALIDATED") {
     next.invalidatedAt = args.now;
   }
@@ -89,6 +95,8 @@ export function createDetectedSignal(args: {
     watchingAt: null,
     confirmedAt: null,
     tradePlannedAt: null,
+    enteredAt: null,
+    closedAt: null,
     invalidatedAt: null,
     expiredAt: null,
     dismissedAt: null,
@@ -154,6 +162,9 @@ export function applySignalTransition(args: {
   if (isTerminalSignalState({ state: args.current.state })) {
     return { next: args.current, changed: false, event: null };
   }
+  if (args.current.state === "ENTERED") {
+    return { next: args.current, changed: false, event: null };
+  }
   let target: SignalState | null = null;
   if (args.evaluation.proposedState === "INVALIDATED") {
     target = "INVALIDATED";
@@ -214,6 +225,34 @@ export function dismissSignal(args: { current: SignalRecord; now: Date }): Trans
   }
   const next = applyTimestamps({ record: args.current, state: "DISMISSED", now: args.now });
   next.evidenceJson = appendTransition({ record: next, state: "DISMISSED", at: args.now, evidence: { reason: "user-dismiss" } });
+  return { next, changed: true, event: "SIGNAL_STATE_CHANGED" };
+}
+
+export function markSignalEntered(args: { current: SignalRecord; now: Date }): TransitionResult {
+  if (!canTransition({ from: args.current.state, to: "ENTERED" })) {
+    return { next: args.current, changed: false, event: null };
+  }
+  const next = applyTimestamps({ record: args.current, state: "ENTERED", now: args.now });
+  next.evidenceJson = appendTransition({
+    record: next,
+    state: "ENTERED",
+    at: args.now,
+    evidence: { reason: "broker-match" },
+  });
+  return { next, changed: true, event: "SIGNAL_STATE_CHANGED" };
+}
+
+export function markSignalClosed(args: { current: SignalRecord; now: Date }): TransitionResult {
+  if (!canTransition({ from: args.current.state, to: "CLOSED" })) {
+    return { next: args.current, changed: false, event: null };
+  }
+  const next = applyTimestamps({ record: args.current, state: "CLOSED", now: args.now });
+  next.evidenceJson = appendTransition({
+    record: next,
+    state: "CLOSED",
+    at: args.now,
+    evidence: { reason: "broker-close" },
+  });
   return { next, changed: true, event: "SIGNAL_STATE_CHANGED" };
 }
 

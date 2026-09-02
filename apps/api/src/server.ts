@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import { hasEtoroCredentials, hasTelegramCredentials } from "@market-sentinel/config";
 import { psychologyChecklistSchema, REDIS_KEYS, sseEventSchema } from "@market-sentinel/contracts";
 import { createDb } from "@market-sentinel/db";
@@ -23,6 +24,23 @@ import { emptyRiskStatus, evaluateStoredPlan, readRiskStatus, setManualCooldown 
 import { emptySettings, patchAlertSettings, patchJsonBucket, readSettings } from "./settings.js";
 import { createManualZone, deleteManualZone, emptyZones, parseManualZoneBody, readZones, updateManualZone } from "./zones.js";
 import { createApprovedPlan, dismissStoredSignal, emptySignalDetail, emptySignals, parseSignalFilters, readSignal, readSignals } from "./signals.js";
+import {
+  emptyJournal,
+  emptyJournalDetail,
+  parseJournalPatch,
+  patchJournal,
+  readJournal,
+  readJournalDetail,
+  readJournalScreenshot,
+  saveJournalScreenshot,
+} from "./journal.js";
+import {
+  emptyAnalyticsSummary,
+  readAnalyticsInstruments,
+  readAnalyticsPsychology,
+  readAnalyticsSetups,
+  readAnalyticsSummary,
+} from "./analytics.js";
 
 export async function buildServer() {
   const env = loadApiEnv();
@@ -31,6 +49,7 @@ export async function buildServer() {
     origin: true,
     methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"],
   });
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
   const redis = new Redis(env.REDIS_URL, {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
@@ -549,6 +568,135 @@ export async function buildServer() {
       blackoutBeforeMinutes: body.blackoutBeforeMinutes,
       blackoutAfterMinutes: body.blackoutAfterMinutes,
     });
+  });
+
+  app.get("/journal", async () => {
+    if (!(await pingDatabase())) {
+      return emptyJournal();
+    }
+    try {
+      const account = (await pingRedis()) ? await readAccountSnapshot({ redis }) : emptyAccount();
+      return await readJournal({ db: dbPair.db, historyUnavailable: account.historyUnavailable });
+    } catch {
+      return emptyJournal();
+    }
+  });
+
+  app.get("/journal/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return emptyJournalDetail();
+    }
+    const detail = await readJournalDetail({ db: dbPair.db, id: params.id });
+    if (!detail.entry) {
+      return reply.code(404).send(detail);
+    }
+    return detail;
+  });
+
+  app.patch("/journal/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const parsed = parseJournalPatch({ body: request.body });
+    if (!parsed.ok) {
+      return reply.code(400).send({ error: parsed.error });
+    }
+    const result = await patchJournal({ db: dbPair.db, id: params.id, patch: parsed.value });
+    if (result === "not_found") {
+      return reply.code(404).send({ error: "journal entry not found" });
+    }
+    if (result === "invalid_plan") {
+      return reply.code(400).send({ error: "trade plan is missing, not approved, or does not match this entry" });
+    }
+    if (result === "plan_in_use") {
+      return reply.code(409).send({ error: "trade plan is already linked to another journal entry" });
+    }
+    return result;
+  });
+
+  app.post("/journal/:id/screenshot", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    let buffer: Buffer | null = null;
+    if (request.isMultipart()) {
+      const file = await request.file();
+      if (file) {
+        buffer = await file.toBuffer();
+      }
+    } else {
+      const body = (request.body ?? {}) as { contentBase64?: string };
+      if (typeof body.contentBase64 === "string") {
+        buffer = Buffer.from(body.contentBase64, "base64");
+      }
+    }
+    if (!buffer) {
+      return reply.code(400).send({ error: "missing screenshot" });
+    }
+    const result = await saveJournalScreenshot({ db: dbPair.db, id: params.id, buffer });
+    if (result === "not_found") {
+      return reply.code(404).send({ error: "journal entry not found" });
+    }
+    if (result === "invalid") {
+      return reply.code(400).send({ error: "invalid screenshot" });
+    }
+    return result;
+  });
+
+  app.get("/journal/:id/screenshot", async (request, reply) => {
+    const params = request.params as { id: string };
+    const file = await readJournalScreenshot({ db: dbPair.db, id: params.id });
+    if (!file) {
+      return reply.code(404).send({ error: "screenshot not found" });
+    }
+    return reply.type(file.contentType).send(file.buffer);
+  });
+
+  app.get("/analytics/summary", async () => {
+    if (!(await pingDatabase())) {
+      return emptyAnalyticsSummary();
+    }
+    try {
+      return await readAnalyticsSummary({ db: dbPair.db });
+    } catch {
+      return emptyAnalyticsSummary();
+    }
+  });
+
+  app.get("/analytics/setups", async () => {
+    if (!(await pingDatabase())) {
+      return { available: false, empty: true, setups: [] };
+    }
+    try {
+      return await readAnalyticsSetups({ db: dbPair.db });
+    } catch {
+      return { available: false, empty: true, setups: [] };
+    }
+  });
+
+  app.get("/analytics/instruments", async () => {
+    if (!(await pingDatabase())) {
+      return { available: false, empty: true, instruments: [] };
+    }
+    try {
+      return await readAnalyticsInstruments({ db: dbPair.db });
+    } catch {
+      return { available: false, empty: true, instruments: [] };
+    }
+  });
+
+  app.get("/analytics/psychology", async () => {
+    if (!(await pingDatabase())) {
+      return { available: false, empty: true, psychology: null };
+    }
+    try {
+      return await readAnalyticsPsychology({ db: dbPair.db });
+    } catch {
+      return { available: false, empty: true, psychology: null };
+    }
   });
 
   app.delete("/events/:id", async (request, reply) => {

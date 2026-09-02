@@ -30,6 +30,7 @@ import {
 import { createSerialQueue } from "./serial-queue.js";
 import { maybeAlertStreamStale, publishDomainEvent } from "./alert-store.js";
 import { syncAccountAndRisk } from "./account-store.js";
+import { updateOpenExcursions } from "./journal-store.js";
 import { evaluateSignals } from "./signal-store.js";
 import { evaluateStructure } from "./structure-store.js";
 
@@ -380,6 +381,9 @@ async function applyTickToBuilders(args: {
     return;
   }
   const at = new Date(args.tick.quotedAt);
+  await updateOpenExcursions({ db: args.db, symbol, lastPrice: price }).catch((error) => {
+    logger.warn({ err: error, symbol }, "journal excursion update skipped");
+  });
   let closedAny = false;
   for (const timeframe of TIMEFRAMES) {
     const key = builderKey({ symbol, timeframe });

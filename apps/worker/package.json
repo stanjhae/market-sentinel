@@ -17,6 +17,7 @@
     "@market-sentinel/domain": "workspace:*",
     "@market-sentinel/etoro-client": "workspace:*",
     "@market-sentinel/indicators": "workspace:*",
+    "@market-sentinel/journal": "workspace:*",
     "@market-sentinel/market-structure": "workspace:*",
     "@market-sentinel/observability": "workspace:*",
     "@market-sentinel/risk-engine": "workspace:*",

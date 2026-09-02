@@ -64,6 +64,8 @@ export function rowToSignal(args: { row: typeof signals.$inferSelect }): SignalR
     watchingAt: args.row.watchingAt,
     confirmedAt: args.row.confirmedAt,
     tradePlannedAt: args.row.tradePlannedAt,
+    enteredAt: args.row.enteredAt,
+    closedAt: args.row.closedAt,
     invalidatedAt: args.row.invalidatedAt,
     expiredAt: args.row.expiredAt,
     dismissedAt: args.row.dismissedAt,
@@ -235,7 +237,7 @@ async function applyAndPersist(args: {
 export async function cacheSignalSummary(args: {
   db: Database;
   redis: Redis;
-  instrument: InstrumentRef;
+  instrument: Pick<InstrumentRef, "id" | "symbol">;
 }): Promise<void> {
   const rows = await args.db
     .select()
@@ -266,7 +268,7 @@ function explanationFrom(args: { row: typeof signals.$inferSelect }): string {
   return `${args.row.strategyKey} ${args.row.direction.toLowerCase()} · ${reason}`;
 }
 
-async function persistSignal(args: { db: Database; record: SignalRecord }): Promise<void> {
+export async function persistSignal(args: { db: Database; record: SignalRecord }): Promise<void> {
   const values = {
     instrumentId: args.record.instrumentId,
     symbol: args.record.symbol,
@@ -279,6 +281,8 @@ async function persistSignal(args: { db: Database; record: SignalRecord }): Prom
     watchingAt: args.record.watchingAt,
     confirmedAt: args.record.confirmedAt,
     tradePlannedAt: args.record.tradePlannedAt,
+    enteredAt: args.record.enteredAt,
+    closedAt: args.record.closedAt,
     invalidatedAt: args.record.invalidatedAt,
     expiredAt: args.record.expiredAt,
     dismissedAt: args.record.dismissedAt,

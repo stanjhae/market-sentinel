@@ -12,6 +12,8 @@ const LINKS = [
   { href: "/account", label: "Account" },
   { href: "/trade-gate", label: "Trade Gate" },
   { href: "/alerts", label: "Alerts" },
+  { href: "/journal", label: "Journal" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/settings", label: "Settings" },
 ] as const;
 
@@ -43,8 +45,6 @@ export function AppHeader() {
               ) : null}
             </Link>
           ))}
-          <span>Journal</span>
-          <span>Analytics</span>
         </nav>
       </div>
     </header>

@@ -13,3 +13,4 @@ playwright-report
 test-results
 .drizzle
 *.tsbuildinfo
+data/journal-screenshots

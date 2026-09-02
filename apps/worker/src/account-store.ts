@@ -47,6 +47,7 @@ import { and, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
 import { maybeAlertPositionChange, maybeAlertRiskLimit, publishDomainEvent } from "./alert-store.js";
+import { reconcileJournal } from "./journal-store.js";
 import type { TelegramCredentials } from "./alert-store.js";
 
 const logger = createLogger("worker-account");
@@ -260,6 +261,9 @@ export async function syncAccountAndRisk(args: AccountSyncContext): Promise<void
       nextStatus: tradingStatus,
       dailyPnl: daily,
       consecutiveLosses,
+    });
+    await reconcileJournal({ db: args.db, redis: args.redis, now }).catch((journalError) => {
+      logger.warn({ err: journalError }, "journal reconcile skipped");
     });
   } catch (error) {
     logger.warn({ err: error }, "account sync failed");

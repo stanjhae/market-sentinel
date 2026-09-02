@@ -22,6 +22,8 @@ import {
   decidePlanGate,
   parseEventTimeUtc,
   plannedEntryFromZone,
+  parseJournalMatchStatus,
+  trendAligned,
   type Trend,
   type ZoneSource,
 } from "./index.js";
@@ -44,6 +46,11 @@ describe("WATCHLIST", () => {
     expect(entryStatusFromState({ state: "WATCHING" })).toBe("WAITING FOR CONFIRMATION");
     expect(isTerminalSignalState({ state: "INVALIDATED" })).toBe(true);
     expect(isTerminalSignalState({ state: "CONFIRMED" })).toBe(false);
+    expect(parseJournalMatchStatus({ value: "UNGATED" })).toBe("UNGATED");
+    expect(parseJournalMatchStatus({ value: "OPEN" })).toBeNull();
+    expect(trendAligned({ direction: "LONG", primaryTrend: "STRONG_BULL" })).toBe(true);
+    expect(trendAligned({ direction: "LONG", primaryTrend: "BEAR" })).toBe(false);
+    expect(trendAligned({ direction: "SHORT", primaryTrend: "RANGE" })).toBeNull();
   });
 
   it("reserves Milestone 3 regime and zone enums", () => {

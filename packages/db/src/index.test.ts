@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instruments, auditLogs, candles, indicatorSnapshots, pivots, priceZones, marketRegimes, signals, alerts, appSettings } from "./schema.js";
+import { instruments, auditLogs, candles, indicatorSnapshots, pivots, priceZones, marketRegimes, signals, alerts, appSettings, journalEntries } from "./schema.js";
 
 describe("schema", () => {
   it("defines instrument, candle, and audit tables", () => {
@@ -13,5 +13,6 @@ describe("schema", () => {
     expect(signals).toBeDefined();
     expect(alerts).toBeDefined();
     expect(appSettings).toBeDefined();
+    expect(journalEntries).toBeDefined();
   });
 });
