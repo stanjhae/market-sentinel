@@ -6,7 +6,16 @@ export { doNotChaseActive, doNotChaseStrategy } from "./do-not-chase.js";
 export { evaluateAllStrategies, STRATEGIES } from "./evaluate.js";
 export { scoreOpportunity } from "./score.js";
 export type { ScoreRiskInput } from "./score.js";
-export { applySignalTransition, canTransition, createDetectedSignal, createPlanStub, dismissSignal, streamEvaluationFrozen } from "./machine.js";
+export {
+  applySignalTransition,
+  canTransition,
+  createDetectedSignal,
+  createPlanStub,
+  dismissSignal,
+  markSignalClosed,
+  markSignalEntered,
+  streamEvaluationFrozen,
+} from "./machine.js";
 export {
   bestOpenTradeSetup,
   emptyEvaluation,

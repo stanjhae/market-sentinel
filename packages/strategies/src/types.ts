@@ -88,6 +88,8 @@ export type SignalRecord = {
   watchingAt: Date | null;
   confirmedAt: Date | null;
   tradePlannedAt: Date | null;
+  enteredAt: Date | null;
+  closedAt: Date | null;
   invalidatedAt: Date | null;
   expiredAt: Date | null;
   dismissedAt: Date | null;

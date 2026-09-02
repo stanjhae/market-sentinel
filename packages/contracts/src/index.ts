@@ -305,6 +305,8 @@ export const signalDtoSchema = z.object({
   watchingAt: z.string().nullable(),
   confirmedAt: z.string().nullable(),
   tradePlannedAt: z.string().nullable(),
+  enteredAt: z.string().nullable(),
+  closedAt: z.string().nullable(),
   invalidatedAt: z.string().nullable(),
   expiredAt: z.string().nullable(),
   dismissedAt: z.string().nullable(),
@@ -417,6 +419,160 @@ export const settingsResponseSchema = z.object({
   markets: z.record(z.unknown()),
 });
 
+export const journalMatchStatusSchema = z.enum(["LINKED", "UNMATCHED", "UNGATED"]);
+
+export const journalEntryDtoSchema = z.object({
+  id: z.string(),
+  etoroPositionId: z.string(),
+  brokerTradeId: z.string().nullable(),
+  tradePlanId: z.string().nullable(),
+  signalId: z.string().nullable(),
+  setupKey: z.string().nullable(),
+  matchStatus: journalMatchStatusSchema,
+  matchLocked: z.boolean(),
+  symbol: z.string().nullable(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+  openedAt: z.string().nullable(),
+  closedAt: z.string().nullable(),
+  openPrice: z.string().nullable(),
+  closePrice: z.string().nullable(),
+  units: z.string().nullable(),
+  realizedPnl: z.string().nullable(),
+  fees: z.string().nullable(),
+  resultR: z.string().nullable(),
+  maeUsd: z.string().nullable(),
+  maeR: z.string().nullable(),
+  mfeUsd: z.string().nullable(),
+  mfeR: z.string().nullable(),
+  followedPlan: z.boolean().nullable(),
+  ruleBreaks: z.array(z.string()),
+  thesisText: z.string().nullable(),
+  preTradeEmotion: z.string().nullable(),
+  postTradeEmotion: z.string().nullable(),
+  notes: z.string().nullable(),
+  screenshotUrl: z.string().nullable(),
+  tags: z.array(z.string()),
+  alignedWithTrend: z.boolean().nullable(),
+  snapshotJson: z.record(z.unknown()),
+  evidenceJson: z.record(z.unknown()),
+});
+
+export const journalLinkablePlanSchema = z.object({
+  id: z.string(),
+  signalId: z.string(),
+  symbol: z.string(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+  approvedAt: z.string(),
+  expectedR: z.string().nullable(),
+});
+
+export const journalListResponseSchema = z.object({
+  available: z.boolean(),
+  historyUnavailable: z.boolean(),
+  entries: z.array(journalEntryDtoSchema),
+});
+
+export const journalDetailResponseSchema = z.object({
+  available: z.boolean(),
+  entry: journalEntryDtoSchema.nullable(),
+  plan: z
+    .object({
+      id: z.string(),
+      riskPct: z.string().nullable(),
+      riskAmountUsd: z.string().nullable(),
+      expectedR: z.string().nullable(),
+      stopLoss: z.string().nullable(),
+      target1: z.string().nullable(),
+      gateStatus: z.string(),
+      checklistJson: z.unknown(),
+    })
+    .nullable(),
+  signal: signalDtoSchema.nullable(),
+  linkablePlans: z.array(journalLinkablePlanSchema),
+});
+
+export const journalPatchSchema = z.object({
+  notes: z.string().optional(),
+  thesisText: z.string().optional(),
+  preTradeEmotion: z.string().optional(),
+  postTradeEmotion: z.string().optional(),
+  followedPlan: z.boolean().nullable().optional(),
+  ruleBreaks: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  tradePlanId: z.string().nullable().optional(),
+});
+
+export const metricBucketSchema = z.object({
+  key: z.string(),
+  count: z.number().int(),
+  netPnl: z.string().nullable(),
+  winRate: z.string().nullable(),
+  expectancyR: z.string().nullable(),
+});
+
+export const analyticsSplitSchema = z.object({
+  count: z.number().int(),
+  netPnl: z.string(),
+  expectancyR: z.string().nullable(),
+  winRate: z.string().nullable().optional(),
+});
+
+export const analyticsSummaryResponseSchema = z.object({
+  available: z.boolean(),
+  empty: z.boolean(),
+  summary: z
+    .object({
+      closedCount: z.number().int(),
+      netPnl: z.string(),
+      winRate: z.string().nullable(),
+      averageWin: z.string().nullable(),
+      averageLoss: z.string().nullable(),
+      payoffRatio: z.string().nullable(),
+      expectancyR: z.string().nullable(),
+      profitFactor: z.string().nullable(),
+      maxDrawdown: z.string(),
+      averageMae: z.string().nullable(),
+      averageMfe: z.string().nullable(),
+      ruleAdherenceRate: z.string().nullable(),
+      feesPctOfGross: z.string().nullable(),
+      gated: analyticsSplitSchema,
+      ungated: analyticsSplitSchema,
+    })
+    .nullable(),
+});
+
+export const analyticsSetupsResponseSchema = z.object({
+  available: z.boolean(),
+  empty: z.boolean(),
+  setups: z.array(metricBucketSchema),
+});
+
+export const analyticsInstrumentsResponseSchema = z.object({
+  available: z.boolean(),
+  empty: z.boolean(),
+  instruments: z.array(metricBucketSchema),
+});
+
+export const analyticsPsychologyResponseSchema = z.object({
+  available: z.boolean(),
+  empty: z.boolean(),
+  psychology: z
+    .object({
+      followed: analyticsSplitSchema,
+      broken: analyticsSplitSchema,
+      disciplineAtOrAbove: analyticsSplitSchema,
+      disciplineBelow: analyticsSplitSchema,
+      afterWin: analyticsSplitSchema,
+      afterLoss: analyticsSplitSchema,
+      long: analyticsSplitSchema,
+      short: analyticsSplitSchema,
+      trendAligned: analyticsSplitSchema,
+      countertrend: analyticsSplitSchema,
+      byHourUtc: z.array(metricBucketSchema),
+    })
+    .nullable(),
+});
+
 export const sseEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("markets"),
@@ -485,3 +641,11 @@ export type AlertDto = z.infer<typeof alertDtoSchema>;
 export type AlertsResponse = z.infer<typeof alertsResponseSchema>;
 export type AlertSettingsDto = z.infer<typeof alertSettingsSchema>;
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>;
+export type JournalEntryDto = z.infer<typeof journalEntryDtoSchema>;
+export type JournalListResponse = z.infer<typeof journalListResponseSchema>;
+export type JournalDetailResponse = z.infer<typeof journalDetailResponseSchema>;
+export type JournalPatch = z.infer<typeof journalPatchSchema>;
+export type AnalyticsSummaryResponse = z.infer<typeof analyticsSummaryResponseSchema>;
+export type AnalyticsSetupsResponse = z.infer<typeof analyticsSetupsResponseSchema>;
+export type AnalyticsInstrumentsResponse = z.infer<typeof analyticsInstrumentsResponseSchema>;
+export type AnalyticsPsychologyResponse = z.infer<typeof analyticsPsychologyResponseSchema>;

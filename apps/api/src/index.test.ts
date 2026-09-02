@@ -120,4 +120,36 @@ describe("api health and markets", () => {
     expect([404, 503]).toContain(response.statusCode);
     await app.close();
   });
+
+  it("returns empty journal and analytics envelopes without inventing a track record", async () => {
+    const { app } = await buildServer();
+    const journal = await app.inject({ method: "GET", url: "/journal" });
+    expect(journal.statusCode).toBe(200);
+    const journalBody = journal.json();
+    expect(Array.isArray(journalBody.entries)).toBe(true);
+    const analytics = await app.inject({ method: "GET", url: "/analytics/summary" });
+    expect(analytics.statusCode).toBe(200);
+    const analyticsBody = analytics.json();
+    expect(analyticsBody.empty === true || analyticsBody.summary === null || typeof analyticsBody.summary?.closedCount === "number").toBe(true);
+    if (analyticsBody.empty) {
+      expect(analyticsBody.summary).toBeNull();
+    }
+    const unknown = await app.inject({
+      method: "PATCH",
+      url: "/journal/missing",
+      payload: { notes: "x" },
+    });
+    expect([404, 503]).toContain(unknown.statusCode);
+    const traversal = await app.inject({ method: "GET", url: "/journal/../package.json/screenshot" });
+    expect(traversal.statusCode).toBe(404);
+    const badId = await app.inject({ method: "GET", url: "/journal/not-a-uuid/screenshot" });
+    expect(badId.statusCode).toBe(404);
+    const missingPlan = await app.inject({
+      method: "PATCH",
+      url: "/journal/00000000-0000-4000-8000-000000000000",
+      payload: { tradePlanId: "11111111-1111-4111-8111-111111111111" },
+    });
+    expect([400, 404, 503]).toContain(missingPlan.statusCode);
+    await app.close();
+  });
 });

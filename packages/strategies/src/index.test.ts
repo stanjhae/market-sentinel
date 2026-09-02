@@ -8,7 +8,7 @@ import {
   type SignalReplayStep,
 } from "@market-sentinel/test-fixtures";
 import { describe, expect, it } from "vitest";
-import { applySignalTransition, canTransition, createPlanStub, dismissSignal } from "./machine.js";
+import { applySignalTransition, canTransition, createDetectedSignal, createPlanStub, dismissSignal, markSignalClosed, markSignalEntered } from "./machine.js";
 import { breakdownRetestStrategy } from "./breakdown-retest.js";
 import { doNotChaseStrategy } from "./do-not-chase.js";
 import { evaluateAllStrategies } from "./evaluate.js";
@@ -229,6 +229,39 @@ describe("state machine", () => {
     });
     expect(again.changed).toBe(false);
     expect(again.next?.id).toBe("sig-1");
+  });
+
+  it("enters and closes only from broker matching and freezes ENTERED against strategy invalidation", () => {
+    const snapshot = snapshotFromStep({ step: breakdownRetestReplay()[0]!, index: 0 });
+    const planned = createPlanStub({
+      current: {
+        ...createDetectedSignal({
+          id: "sig-enter",
+          symbol: "US30",
+          snapshot,
+          evaluation: breakdownRetestStrategy.evaluate({ snapshot }),
+          score: scoreOpportunity({ snapshot, evaluation: breakdownRetestStrategy.evaluate({ snapshot }) }),
+          now: snapshot.evaluatedAt,
+        }),
+        state: "CONFIRMED",
+        confirmedAt: snapshot.evaluatedAt,
+      },
+      now: snapshot.evaluatedAt,
+    }).next!;
+    const entered = markSignalEntered({ current: planned, now: new Date("2026-09-01T13:00:00.000Z") });
+    expect(entered.next?.state).toBe("ENTERED");
+    const frozen = applySignalTransition({
+      current: entered.next,
+      evaluation: { ...breakdownRetestStrategy.evaluate({ snapshot }), proposedState: "INVALIDATED" },
+      snapshot: { ...snapshot, lastFinalOpenTimeUtc: new Date("2026-09-01T13:15:00.000Z") },
+      now: new Date("2026-09-01T13:15:00.000Z"),
+      barsElapsed15m: 1,
+      idFactory: () => "sig-x",
+      symbol: "US30",
+    });
+    expect(frozen.changed).toBe(false);
+    expect(frozen.next?.state).toBe("ENTERED");
+    expect(markSignalClosed({ current: entered.next!, now: new Date("2026-09-01T14:00:00.000Z") }).next?.state).toBe("CLOSED");
   });
 
   it("advances one legal step per candle", () => {

@@ -189,6 +189,51 @@ export const RISK_DEFAULTS = {
   blackoutAfterMinutes: 10,
 } as const;
 
+export type JournalMatchStatus = "LINKED" | "UNMATCHED" | "UNGATED";
+
+export const JOURNAL_DEFAULTS = {
+  matchWindowMs: 4 * 60 * 60 * 1000,
+  disciplineStart: 100,
+  ungatedPenalty: 30,
+  unfollowedPenalty: 20,
+  ruleBreakPenalty: 10,
+  disciplineThreshold: 70,
+  screenshotMaxBytes: 5 * 1024 * 1024,
+} as const;
+
+export function isJournalMatchStatus(args: { value: string }): args is { value: JournalMatchStatus } {
+  return args.value === "LINKED" || args.value === "UNMATCHED" || args.value === "UNGATED";
+}
+
+export function parseJournalMatchStatus(args: { value: string }): JournalMatchStatus | null {
+  return isJournalMatchStatus({ value: args.value }) ? (args.value as JournalMatchStatus) : null;
+}
+
+export function trendAligned(args: { direction: SignalDirection; primaryTrend: Trend | string | null }): boolean | null {
+  if (!args.primaryTrend || args.direction === "NEUTRAL") {
+    return null;
+  }
+  if (args.primaryTrend === "RANGE") {
+    return null;
+  }
+  if (args.direction === "LONG") {
+    if (args.primaryTrend === "BULL" || args.primaryTrend === "STRONG_BULL") {
+      return true;
+    }
+    if (args.primaryTrend === "BEAR" || args.primaryTrend === "STRONG_BEAR") {
+      return false;
+    }
+    return null;
+  }
+  if (args.primaryTrend === "BEAR" || args.primaryTrend === "STRONG_BEAR") {
+    return true;
+  }
+  if (args.primaryTrend === "BULL" || args.primaryTrend === "STRONG_BULL") {
+    return false;
+  }
+  return null;
+}
+
 export type RiskProfile = {
   maxRiskPerTradePct: number;
   maxDailyLossPct: number;
@@ -269,7 +314,9 @@ export type DomainEventType =
   | "POSITION_OPENED"
   | "POSITION_UPDATED"
   | "POSITION_CLOSED"
-  | "RISK_LIMIT_HIT";
+  | "RISK_LIMIT_HIT"
+  | "JOURNAL_OPENED"
+  | "JOURNAL_BACKFILL";
 
 export {
   ALERT_DEFAULTS,
