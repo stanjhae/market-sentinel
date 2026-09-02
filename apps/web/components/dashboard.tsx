@@ -3,7 +3,7 @@
 import type { AccountResponse, MarketsResponse, RiskStatus, SseEvent } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSentinelEvents } from "./sentinel-stream";
@@ -30,9 +30,9 @@ export function Dashboard({ symbols }: DashboardProps) {
     async function loadRest() {
       try {
         const [marketsResponse, accountResponse, riskResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/markets`),
-          fetch(`${API_BASE_URL}/account`),
-          fetch(`${API_BASE_URL}/risk/status`),
+          apiFetch({ path: "/markets" }),
+          apiFetch({ path: "/account" }),
+          apiFetch({ path: "/risk/status" }),
         ]);
         if (!marketsResponse.ok) {
           throw new Error(`API ${marketsResponse.status}`);
@@ -68,7 +68,7 @@ export function Dashboard({ symbols }: DashboardProps) {
       setError(null);
     }
     if (event.type === "account" || event.type === "risk") {
-      void Promise.all([fetch(`${API_BASE_URL}/account`), fetch(`${API_BASE_URL}/risk/status`)])
+      void Promise.all([apiFetch({ path: "/account" }), apiFetch({ path: "/risk/status" })])
         .then(async ([accountResponse, riskResponse]) => {
           if (accountResponse.ok) setAccount((await accountResponse.json()) as AccountResponse);
           if (riskResponse.ok) setRisk((await riskResponse.json()) as RiskStatus);
@@ -76,7 +76,7 @@ export function Dashboard({ symbols }: DashboardProps) {
         .catch(() => undefined);
     }
     if (event.type === "signal") {
-      void fetch(`${API_BASE_URL}/markets`)
+      void apiFetch({ path: "/markets" })
         .then((response) => (response.ok ? response.json() : null))
         .then((payload: MarketsResponse | null) => {
           if (payload) {

@@ -3,7 +3,7 @@
 import type { JournalListResponse, SseEvent } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSentinelEvents } from "./sentinel-stream";
@@ -13,7 +13,7 @@ export function JournalBoard() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const response = await fetch(`${API_BASE_URL}/journal`);
+    const response = await apiFetch({ path: "/journal" });
     if (!response.ok) {
       throw new Error(`API ${response.status}`);
     }

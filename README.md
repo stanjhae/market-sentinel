@@ -68,12 +68,17 @@ Register keys at [api-portal.etoro.com](https://api-portal.etoro.com/).
 | `ETORO_USER_KEY` | server only | Never `NEXT_PUBLIC_` |
 | `DATABASE_URL` | server | Postgres |
 | `REDIS_URL` | server | Redis |
+| `APP_PASSWORD` | server only | Optional. Unset is an insecure local default. When set (min 12), the API and UI require a session. Never `NEXT_PUBLIC_` |
 | `TELEGRAM_BOT_TOKEN` | server only | Optional. Never `NEXT_PUBLIC_` |
 | `TELEGRAM_CHAT_ID` | server only | Optional. Never `NEXT_PUBLIC_` |
 
 ## Safety
 
 Live-money order placement is out of scope until a later milestone. The eToro client in this repository is read-only.
+
+Leaving `APP_PASSWORD` empty keeps the local API and UI open. Set it before exposing the API beyond localhost.
+
+The Next.js app proxies `/sentinel-api/*` to the Fastify process so session cookies are first-party (`SameSite=Lax`). Do not set `NEXT_PUBLIC_API_BASE_URL` to the API origin unless you also terminate HTTPS and accept a looser cookie policy.
 
 ## Strategies
 

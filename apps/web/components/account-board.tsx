@@ -3,7 +3,7 @@
 import type { AccountResponse, HistoryResponse, PositionsResponse, RiskStatus, SseEvent } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { useCallback, useEffect, useState } from "react";
 import { useSentinelEvents } from "./sentinel-stream";
 
@@ -17,10 +17,10 @@ export function AccountBoard() {
 
   const load = useCallback(async () => {
     const [accountResponse, positionsResponse, historyResponse, riskResponse] = await Promise.all([
-      fetch(`${API_BASE_URL}/account`),
-      fetch(`${API_BASE_URL}/account/positions`),
-      fetch(`${API_BASE_URL}/account/history`),
-      fetch(`${API_BASE_URL}/risk/status`),
+      apiFetch({ path: "/account" }),
+      apiFetch({ path: "/account/positions" }),
+      apiFetch({ path: "/account/history" }),
+      apiFetch({ path: "/risk/status" }),
     ]);
     if (!accountResponse.ok) {
       throw new Error(`API ${accountResponse.status}`);
@@ -48,7 +48,7 @@ export function AccountBoard() {
   async function sync() {
     setSyncing(true);
     try {
-      await fetch(`${API_BASE_URL}/account/sync`, { method: "POST" });
+      await apiFetch({ path: "/account/sync", init: { method: "POST" } });
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sync failed");

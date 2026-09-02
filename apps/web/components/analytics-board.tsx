@@ -7,7 +7,7 @@ import type {
   AnalyticsSummaryResponse,
 } from "@market-sentinel/contracts";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 function Metric(args: { label: string; value: string | null | undefined }) {
@@ -31,10 +31,10 @@ export function AnalyticsBoard() {
     async function load() {
       try {
         const [summaryResponse, setupsResponse, instrumentsResponse, psychologyResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/analytics/summary`),
-          fetch(`${API_BASE_URL}/analytics/setups`),
-          fetch(`${API_BASE_URL}/analytics/instruments`),
-          fetch(`${API_BASE_URL}/analytics/psychology`),
+          apiFetch({ path: "/analytics/summary" }),
+          apiFetch({ path: "/analytics/setups" }),
+          apiFetch({ path: "/analytics/instruments" }),
+          apiFetch({ path: "/analytics/psychology" }),
         ]);
         if (!summaryResponse.ok) {
           throw new Error(`API ${summaryResponse.status}`);

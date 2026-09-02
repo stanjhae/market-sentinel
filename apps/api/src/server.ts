@@ -1,6 +1,6 @@
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
-import { hasEtoroCredentials, hasTelegramCredentials } from "@market-sentinel/config";
+import { hasEtoroCredentials, hasTelegramCredentials, type Env } from "@market-sentinel/config";
 import { psychologyChecklistSchema, REDIS_KEYS, sseEventSchema } from "@market-sentinel/contracts";
 import { createDb } from "@market-sentinel/db";
 import { parseEventTimeUtc, parseWatchlistSymbol, RISK_DEFAULTS } from "@market-sentinel/domain";
@@ -16,7 +16,24 @@ import {
   readAlerts,
 } from "./alerts.js";
 import { emptyCandles, emptyContext, parseIsoDateQuery, parseTimeframeQuery, readCandles, readMarketContext } from "./candles.js";
+import {
+  allowedBrowserOrigins,
+  clearLoginFailures,
+  clearSessionCookieHeader,
+  isAllowedBrowserOrigin,
+  isPublicRoute,
+  loginLockStatus,
+  passwordsMatch,
+  readSessionCookie,
+  recordLoginFailure,
+  requestIsHttps,
+  sessionCookieHeader,
+  SESSION_TTL_MS,
+  signSession,
+  verifySession,
+} from "./auth.js";
 import { loadApiEnv } from "./env.js";
+import { composeReady } from "./health.js";
 import { emptyHistory, emptyPositions, readAccountSnapshot, readHistory, readPositions } from "./account.js";
 import { createEvent, deleteEvent, emptyEvents, readEvents } from "./events.js";
 import { disconnectedMarkets, emptyAccount, readAccount, readMarkets } from "./markets.js";
@@ -55,14 +72,39 @@ import {
   readReplayFrame,
 } from "./backtest.js";
 
-export async function buildServer() {
-  const env = loadApiEnv();
+export async function buildServer(args: { env?: Partial<Env> } = {}) {
+  const loaded = loadApiEnv();
+  const env = {
+    ...loaded,
+    ...(process.env.NODE_ENV === "test" ? { APP_PASSWORD: undefined } : {}),
+    ...args.env,
+  };
   const app = Fastify({ logger: false });
+  const browserOrigins = allowedBrowserOrigins({ webPort: env.WEB_PORT });
   await app.register(cors, {
-    origin: true,
+    origin: (origin, callback) => {
+      if (!origin || browserOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
+    credentials: true,
     methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"],
   });
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+  app.addHook("onRequest", async (request, reply) => {
+    if (isPublicRoute({ url: request.url, method: request.method })) {
+      return;
+    }
+    if (!env.APP_PASSWORD) {
+      return;
+    }
+    const token = readSessionCookie({ header: request.headers.cookie });
+    if (!verifySession({ token, secret: env.APP_PASSWORD, now: Date.now() })) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+  });
   const redis = new Redis(env.REDIS_URL, {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
@@ -113,9 +155,56 @@ export async function buildServer() {
       credentials: hasEtoroCredentials(env),
     };
     return {
-      ready: checks.redis && checks.credentials && checks.marketStream,
+      ready: composeReady({ checks }),
       checks,
     };
+  });
+
+  app.get("/auth/session", async (request) => {
+    if (!env.APP_PASSWORD) {
+      return { required: false, authenticated: true };
+    }
+    const token = readSessionCookie({ header: request.headers.cookie });
+    return {
+      required: true,
+      authenticated: verifySession({ token, secret: env.APP_PASSWORD, now: Date.now() }),
+    };
+  });
+
+  app.post("/auth/login", async (request, reply) => {
+    const now = Date.now();
+    const lock = loginLockStatus({ ip: request.ip, now });
+    if (lock.locked) {
+      reply.header("retry-after", String(lock.retryAfterSec));
+      return reply.code(429).send({ error: "too-many-attempts" });
+    }
+    const body = request.body as { password?: unknown };
+    const provided = typeof body?.password === "string" ? body.password : "";
+    if (!env.APP_PASSWORD || !passwordsMatch({ provided, expected: env.APP_PASSWORD })) {
+      const next = recordLoginFailure({ ip: request.ip, now });
+      if (next.locked) {
+        reply.header("retry-after", String(next.retryAfterSec));
+        return reply.code(429).send({ error: "too-many-attempts" });
+      }
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    clearLoginFailures({ ip: request.ip });
+    const token = signSession({ secret: env.APP_PASSWORD, now });
+    const secure = requestIsHttps({
+      protocol: request.protocol,
+      forwardedProto: request.headers["x-forwarded-proto"],
+    });
+    reply.header("set-cookie", sessionCookieHeader({ token, maxAgeSec: SESSION_TTL_MS / 1000, secure }));
+    return { required: true, authenticated: true };
+  });
+
+  app.post("/auth/logout", async (request, reply) => {
+    const secure = requestIsHttps({
+      protocol: request.protocol,
+      forwardedProto: request.headers["x-forwarded-proto"],
+    });
+    reply.header("set-cookie", clearSessionCookieHeader({ secure }));
+    return { required: Boolean(env.APP_PASSWORD), authenticated: false };
   });
 
   app.get("/markets", async () => {
@@ -830,11 +919,16 @@ export async function buildServer() {
 
   app.get("/stream", async (request, reply) => {
     reply.hijack();
+    const requestOrigin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
+    const allowOrigin = isAllowedBrowserOrigin({ origin: requestOrigin, webPort: env.WEB_PORT })
+      ? requestOrigin
+      : (browserOrigins[0] ?? "http://localhost:3000");
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": allowOrigin,
+      "Access-Control-Allow-Credentials": "true",
     });
 
     const write = async () => {

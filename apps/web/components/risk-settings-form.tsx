@@ -4,7 +4,7 @@ import type { EventsResponse, RiskProfileDto, SettingsResponse } from "@market-s
 import { parseEventTimeUtc } from "@market-sentinel/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 export function RiskSettingsForm() {
@@ -16,7 +16,7 @@ export function RiskSettingsForm() {
   const [scheduledAtUtc, setScheduledAtUtc] = useState("");
 
   useEffect(() => {
-    void Promise.all([fetch(`${API_BASE_URL}/settings`), fetch(`${API_BASE_URL}/events`)])
+    void Promise.all([apiFetch({ path: "/settings" }), apiFetch({ path: "/events" })])
       .then(async ([settingsResponse, eventsResponse]) => {
         if (settingsResponse.ok) setSettings((await settingsResponse.json()) as SettingsResponse);
         if (eventsResponse.ok) setEvents((await eventsResponse.json()) as EventsResponse);
@@ -25,10 +25,13 @@ export function RiskSettingsForm() {
   }, []);
 
   async function saveRisk(args: { patch: Partial<RiskProfileDto> }) {
-    const response = await fetch(`${API_BASE_URL}/settings/risk`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(args.patch),
+    const response = await apiFetch({
+      path: "/settings/risk",
+      init: {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(args.patch),
+      },
     });
     if (!response.ok) {
       setError(`API ${response.status}`);
@@ -44,15 +47,18 @@ export function RiskSettingsForm() {
       setError("Enter the event time in UTC");
       return;
     }
-    const response = await fetch(`${API_BASE_URL}/events`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        eventName,
-        currency: "USD",
-        impact: "HIGH",
-        scheduledAtUtc: scheduled.toISOString(),
-      }),
+    const response = await apiFetch({
+      path: "/events",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          eventName,
+          currency: "USD",
+          impact: "HIGH",
+          scheduledAtUtc: scheduled.toISOString(),
+        }),
+      },
     });
     if (response.ok) {
       setEvents((await response.json()) as EventsResponse);
@@ -61,7 +67,7 @@ export function RiskSettingsForm() {
   }
 
   async function removeEvent(args: { id: string }) {
-    const response = await fetch(`${API_BASE_URL}/events/${args.id}`, { method: "DELETE" });
+    const response = await apiFetch({ path: `/events/${args.id}`, init: { method: "DELETE" } });
     if (response.ok) {
       setEvents((await response.json()) as EventsResponse);
     }

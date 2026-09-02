@@ -4,7 +4,7 @@ import type { CreatePlanResponse, RiskEvaluationDto, RiskStatus, SignalDetailRes
 import { plannedEntryFromZone, PSYCHOLOGY_CHECKLIST_KEYS, type PsychologyChecklist } from "@market-sentinel/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -48,8 +48,8 @@ export function TradeGateBoard() {
     async function load() {
       try {
         const [riskResponse, signalResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/risk/status`),
-          signalId ? fetch(`${API_BASE_URL}/signals/${signalId}`) : Promise.resolve(null),
+          apiFetch({ path: "/risk/status" }),
+          signalId ? apiFetch({ path: `/signals/${signalId}` }) : Promise.resolve(null),
         ]);
         if (riskResponse.ok) {
           const payload = (await riskResponse.json()) as RiskStatus;
@@ -74,17 +74,20 @@ export function TradeGateBoard() {
     if (!signal) {
       return;
     }
-    void fetch(`${API_BASE_URL}/risk/evaluate-plan`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        symbol: signal.symbol,
-        direction: signal.direction,
-        plannedEntry: plannedEntryFromZone({ low: signal.entryZoneLow, high: signal.entryZoneHigh }),
-        stopLoss: signal.invalidationPrice,
-        target1: signal.target1,
-        riskRewardToT1: signal.riskRewardToT1,
-      }),
+    void apiFetch({
+      path: "/risk/evaluate-plan",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          symbol: signal.symbol,
+          direction: signal.direction,
+          plannedEntry: plannedEntryFromZone({ low: signal.entryZoneLow, high: signal.entryZoneHigh }),
+          stopLoss: signal.invalidationPrice,
+          target1: signal.target1,
+          riskRewardToT1: signal.riskRewardToT1,
+        }),
+      },
     })
       .then((response) => (response.ok ? (response.json() as Promise<RiskEvaluationDto>) : null))
       .then((payload) => {
@@ -100,10 +103,13 @@ export function TradeGateBoard() {
     if (!signal) {
       return;
     }
-    const response = await fetch(`${API_BASE_URL}/signals/${signal.id}/create-plan`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ checklist }),
+    const response = await apiFetch({
+      path: `/signals/${signal.id}/create-plan`,
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ checklist }),
+      },
     });
     const payload = (await response.json()) as CreatePlanResponse;
     setResult(payload);
@@ -116,10 +122,13 @@ export function TradeGateBoard() {
     if (!signal) {
       return;
     }
-    await fetch(`${API_BASE_URL}/signals/${signal.id}/create-plan`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ checklist, logRejection: true }),
+    await apiFetch({
+      path: `/signals/${signal.id}/create-plan`,
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ checklist, logRejection: true }),
+      },
     });
   }
 

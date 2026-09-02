@@ -8,7 +8,7 @@ import { WATCHLIST, type CanonicalSymbol, type Timeframe } from "@market-sentine
 import { CandleChart } from "@/components/candle-chart";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 
@@ -56,10 +56,10 @@ export function ReplayBoard() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/replay/sessions/${args.id}/frame?index=${args.nextIndex}&timeframe=${args.nextTimeframe}`,
-        { signal: controller.signal },
-      );
+      const response = await apiFetch({
+        path: `/replay/sessions/${args.id}/frame?index=${args.nextIndex}&timeframe=${args.nextTimeframe}`,
+        init: { signal: controller.signal },
+      });
       if (!response.ok) {
         throw new Error(`API ${response.status}`);
       }
@@ -84,14 +84,17 @@ export function ReplayBoard() {
     setLoading(true);
     setPlaying(false);
     try {
-      const response = await fetch(`${API_BASE_URL}/replay/sessions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          symbol,
-          from: isoDateUtc({ value: from }),
-          to: isoDateUtc({ value: to }),
-        }),
+      const response = await apiFetch({
+        path: "/replay/sessions",
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            symbol,
+            from: isoDateUtc({ value: from }),
+            to: isoDateUtc({ value: to }),
+          }),
+        },
       });
       if (!response.ok) {
         throw new Error(`API ${response.status}`);
@@ -115,15 +118,18 @@ export function ReplayBoard() {
   async function runBacktest() {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/backtests`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          symbol,
-          from: isoDateUtc({ value: from }),
-          to: isoDateUtc({ value: to }),
-          walkForwardMode: "split",
-        }),
+      const response = await apiFetch({
+        path: "/backtests",
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            symbol,
+            from: isoDateUtc({ value: from }),
+            to: isoDateUtc({ value: to }),
+            walkForwardMode: "split",
+          }),
+        },
       });
       if (!response.ok) {
         throw new Error(`API ${response.status}`);
@@ -149,10 +155,13 @@ export function ReplayBoard() {
     if (!sessionId || !stopLoss || !target1) {
       return;
     }
-    const response = await fetch(`${API_BASE_URL}/replay/sessions/${sessionId}/paper-trade?index=${index}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ direction: "LONG", stopLoss, target1 }),
+    const response = await apiFetch({
+      path: `/replay/sessions/${sessionId}/paper-trade?index=${index}`,
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ direction: "LONG", stopLoss, target1 }),
+      },
     });
     if (response.ok) {
       setFrame((await response.json()) as ReplayFrameResponse);

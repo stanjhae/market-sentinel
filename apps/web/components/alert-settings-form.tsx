@@ -4,7 +4,7 @@ import type { AlertSettingsDto, SettingsResponse } from "@market-sentinel/contra
 import { ALERT_TYPES } from "@market-sentinel/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
@@ -18,7 +18,7 @@ export function AlertSettingsForm() {
 
   useEffect(() => {
     setPermission(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
-    void fetch(`${API_BASE_URL}/settings`)
+    void apiFetch({ path: "/settings" })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`API ${response.status}`);
@@ -36,10 +36,13 @@ export function AlertSettingsForm() {
 
   async function save(args: { patch: Partial<AlertSettingsDto> }) {
     try {
-      const response = await fetch(`${API_BASE_URL}/settings/alerts`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(args.patch),
+      const response = await apiFetch({
+        path: "/settings/alerts",
+        init: {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(args.patch),
+        },
       });
       if (!response.ok) {
         throw new Error(`API ${response.status}`);

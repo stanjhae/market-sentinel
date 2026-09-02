@@ -3,7 +3,7 @@
 import type { AlertDto, AlertsResponse } from "@market-sentinel/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -17,7 +17,7 @@ export function AlertsInbox() {
   const { setUnreadCount } = useSentinelStream();
 
   const load = useCallback(async () => {
-    const response = await fetch(`${API_BASE_URL}/alerts${unreadOnly ? "?unread=true" : ""}`);
+    const response = await apiFetch({ path: `/alerts${unreadOnly ? "?unread=true" : ""}` });
     if (!response.ok) {
       throw new Error(`API ${response.status}`);
     }
@@ -55,7 +55,7 @@ export function AlertsInbox() {
   });
 
   async function markRead(args: { id: string }) {
-    const response = await fetch(`${API_BASE_URL}/alerts/${args.id}/read`, { method: "POST" });
+    const response = await apiFetch({ path: `/alerts/${args.id}/read`, init: { method: "POST" } });
     if (!response.ok && response.status !== 404) {
       throw new Error(`API ${response.status}`);
     }
@@ -63,7 +63,7 @@ export function AlertsInbox() {
   }
 
   async function markAll() {
-    await fetch(`${API_BASE_URL}/alerts/read-all`, { method: "POST" });
+    await apiFetch({ path: "/alerts/read-all", init: { method: "POST" } });
     await load();
   }
 

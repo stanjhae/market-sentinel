@@ -29,6 +29,12 @@ describe("parseEnv", () => {
     expect("NEXT_PUBLIC_ETORO_API_KEY" in env).toBe(false);
   });
 
+  it("rejects APP_PASSWORD shorter than 12 characters", () => {
+    expect(() => parseEnv({ ...validBase, APP_PASSWORD: "short" })).toThrow();
+    expect(parseEnv({ ...validBase, APP_PASSWORD: "correct-horse" }).APP_PASSWORD).toBe("correct-horse");
+    expect("NEXT_PUBLIC_APP_PASSWORD" in parseEnv(validBase)).toBe(false);
+  });
+
   it("treats empty Telegram credentials as missing and never NEXT_PUBLIC", () => {
     const env = parseEnv({
       ...validBase,
