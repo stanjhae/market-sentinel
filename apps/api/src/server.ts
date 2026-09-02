@@ -568,51 +568,93 @@ export async function buildServer(args: { env?: Partial<Env>; executionClient?: 
 
   app.get("/execution/status", async () => executionStatusFromEnv({ env }));
 
+  const blockedPreview = (args: { action: "open" | "close"; blockReasons: string[] }) => ({
+    allowed: false,
+    blockReasons: args.blockReasons,
+    nonce: null,
+    requestId: null,
+    action: args.action,
+    amount: null,
+    instrumentId: null,
+    leverage: 1 as const,
+    stopLoss: null,
+    takeProfit: null,
+    costs: [],
+    evaluation: null,
+  });
+  const blockedConfirm = (args: { blockReasons: string[] }) => ({
+    status: "BLOCKED" as const,
+    orderId: null,
+    etoroOrderId: null,
+    referenceId: null,
+    blockReasons: args.blockReasons,
+  });
+
   app.post("/execution/preview", async (request, reply) => {
-    if (!(await pingDatabase())) {
-      return reply.code(503).send({ error: "database unavailable" });
-    }
     const body = (request.body ?? {}) as { planId?: unknown; signalId?: unknown };
     const planId = typeof body.planId === "string" ? body.planId : undefined;
     const signalId = typeof body.signalId === "string" ? body.signalId : undefined;
     if (!planId && !signalId) {
       return reply.code(400).send({ error: "planId or signalId required" });
     }
+    const isolation = executionStatusFromEnv({ env });
+    const databaseUp = await pingDatabase();
+    if (!isolation.allowed && !databaseUp) {
+      return reply.code(403).send(blockedPreview({ action: "open", blockReasons: isolation.blockReasons }));
+    }
+    if (!databaseUp) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
     const result = await previewOpen({ ...executionDeps(), planId, signalId });
     return reply.code(result.http).send(result.body);
   });
 
   app.post("/execution/confirm", async (request, reply) => {
-    if (!(await pingDatabase())) {
-      return reply.code(503).send({ error: "database unavailable" });
-    }
     const body = (request.body ?? {}) as { nonce?: unknown };
     if (typeof body.nonce !== "string" || body.nonce.length === 0) {
       return reply.code(409).send({ error: "invalid preview nonce" });
+    }
+    const isolation = executionStatusFromEnv({ env });
+    const databaseUp = await pingDatabase();
+    if (!isolation.allowed && !databaseUp) {
+      return reply.code(403).send(blockedConfirm({ blockReasons: isolation.blockReasons }));
+    }
+    if (!databaseUp) {
+      return reply.code(503).send({ error: "database unavailable" });
     }
     const result = await confirmOpen({ ...executionDeps(), nonce: body.nonce });
     return reply.code(result.http).send(result.body);
   });
 
   app.post("/execution/close/preview", async (request, reply) => {
-    if (!(await pingDatabase())) {
-      return reply.code(503).send({ error: "database unavailable" });
-    }
     const body = (request.body ?? {}) as { positionId?: unknown };
     if (typeof body.positionId !== "string" || body.positionId.length === 0) {
       return reply.code(400).send({ error: "positionId required" });
+    }
+    const isolation = executionStatusFromEnv({ env });
+    const databaseUp = await pingDatabase();
+    if (!isolation.allowed && !databaseUp) {
+      return reply.code(403).send(blockedPreview({ action: "close", blockReasons: isolation.blockReasons }));
+    }
+    if (!databaseUp) {
+      return reply.code(503).send({ error: "database unavailable" });
     }
     const result = await previewClose({ ...executionDeps(), positionId: body.positionId });
     return reply.code(result.http).send(result.body);
   });
 
   app.post("/execution/close/confirm", async (request, reply) => {
-    if (!(await pingDatabase())) {
-      return reply.code(503).send({ error: "database unavailable" });
-    }
     const body = (request.body ?? {}) as { nonce?: unknown };
     if (typeof body.nonce !== "string" || body.nonce.length === 0) {
       return reply.code(409).send({ error: "invalid preview nonce" });
+    }
+    const isolation = executionStatusFromEnv({ env });
+    const databaseUp = await pingDatabase();
+    if (!isolation.allowed && !databaseUp) {
+      return reply.code(403).send(blockedConfirm({ blockReasons: isolation.blockReasons }));
+    }
+    if (!databaseUp) {
+      return reply.code(503).send({ error: "database unavailable" });
     }
     const result = await confirmClose({ ...executionDeps(), nonce: body.nonce });
     return reply.code(result.http).send(result.body);
