@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authSessionSchema, healthLiveSchema, sseEventSchema } from "./index.js";
+import { authSessionSchema, executionPreviewSchema, healthLiveSchema, sseEventSchema } from "./index.js";
 
 describe("contracts", () => {
   it("accepts a live health payload", () => {
@@ -45,5 +45,24 @@ describe("contracts", () => {
       authenticated: true,
     });
     expect(authSessionSchema.parse({ required: true, authenticated: false }).authenticated).toBe(false);
+  });
+
+  it("accepts a Demo execution preview envelope", () => {
+    expect(
+      executionPreviewSchema.parse({
+        allowed: true,
+        blockReasons: [],
+        nonce: "n",
+        requestId: "11111111-1111-4111-8111-111111111111",
+        action: "open",
+        amount: "50",
+        instrumentId: 27,
+        leverage: 1,
+        stopLoss: "99",
+        takeProfit: "110",
+        costs: [],
+        evaluation: null,
+      }).leverage,
+    ).toBe(1);
   });
 });

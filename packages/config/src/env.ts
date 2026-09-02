@@ -13,6 +13,12 @@ export const envSchema = z.object({
   ETORO_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   ETORO_USER_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   ETORO_ACCOUNT_TYPE: z.enum(["real", "demo"]).default("real"),
+  DEMO_EXECUTION_ENABLED: z.preprocess((value) => {
+    if (value === true || value === "true" || value === "1") {
+      return true;
+    }
+    return false;
+  }, z.boolean().default(false)),
   ETORO_REST_BASE_URL: z
     .string()
     .url()

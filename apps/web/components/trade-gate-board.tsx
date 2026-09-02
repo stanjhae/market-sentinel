@@ -1,6 +1,6 @@
 "use client";
 
-import type { CreatePlanResponse, RiskEvaluationDto, RiskStatus, SignalDetailResponse, SignalDto } from "@market-sentinel/contracts";
+import type { CreatePlanResponse, ExecutionConfirm, ExecutionPreview, ExecutionStatus, RiskEvaluationDto, RiskStatus, SignalDetailResponse, SignalDto } from "@market-sentinel/contracts";
 import { plannedEntryFromZone, PSYCHOLOGY_CHECKLIST_KEYS, type PsychologyChecklist } from "@market-sentinel/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -41,15 +41,21 @@ export function TradeGateBoard() {
   const [evaluation, setEvaluation] = useState<RiskEvaluationDto | null>(null);
   const [checklist, setChecklist] = useState<PsychologyChecklist>(emptyChecklist);
   const [result, setResult] = useState<CreatePlanResponse | null>(null);
+  const [execution, setExecution] = useState<ExecutionStatus | null>(null);
+  const [preview, setPreview] = useState<ExecutionPreview | null>(null);
+  const [order, setOrder] = useState<ExecutionConfirm | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [riskResponse, signalResponse] = await Promise.all([
+        const [riskResponse, signalResponse, executionResponse] = await Promise.all([
           apiFetch({ path: "/risk/status" }),
           signalId ? apiFetch({ path: `/signals/${signalId}` }) : Promise.resolve(null),
+          apiFetch({ path: "/execution/status" }),
         ]);
         if (riskResponse.ok) {
           const payload = (await riskResponse.json()) as RiskStatus;
@@ -58,6 +64,10 @@ export function TradeGateBoard() {
         if (signalResponse?.ok) {
           const payload = (await signalResponse.json()) as SignalDetailResponse;
           if (!cancelled) setSignal(payload.signal);
+        }
+        if (executionResponse.ok) {
+          const payload = (await executionResponse.json()) as ExecutionStatus;
+          if (!cancelled) setExecution(payload);
         }
         setError(null);
       } catch (cause) {
@@ -113,8 +123,64 @@ export function TradeGateBoard() {
     });
     const payload = (await response.json()) as CreatePlanResponse;
     setResult(payload);
+    if (payload.status === "APPROVED") {
+      setSignal((current) => (current ? { ...current, state: "TRADE_PLANNED", entryStatus: "TRADE_PLANNED" } : current));
+    }
     if (!response.ok && response.status !== 409) {
       setError("create-plan failed");
+    }
+  }
+
+  async function previewDemo(args: { planId?: string | null }) {
+    if (!signal || previewing || confirming || order?.status === "FILLED") {
+      return;
+    }
+    setPreviewing(true);
+    try {
+      const response = await apiFetch({
+        path: "/execution/preview",
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ planId: args.planId ?? result?.planId, signalId: signal.id }),
+        },
+      });
+      const payload = (await response.json()) as ExecutionPreview & { error?: string };
+      if (!response.ok) {
+        const reasons = payload.blockReasons?.join(", ");
+        setError(reasons ? `Demo preview blocked: ${reasons}` : payload.error ?? "Demo preview blocked");
+        setPreview(payload.blockReasons ? payload : null);
+        return;
+      }
+      setPreview(payload);
+      setError(null);
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  async function confirmDemo() {
+    if (!preview?.nonce || confirming || previewing || order?.status === "FILLED") {
+      return;
+    }
+    setConfirming(true);
+    try {
+      const response = await apiFetch({
+        path: "/execution/confirm",
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ nonce: preview.nonce }),
+        },
+      });
+      const payload = (await response.json()) as ExecutionConfirm & { error?: string };
+      setOrder(payload.status ? payload : null);
+      if (!response.ok) {
+        const reasons = payload.blockReasons?.join(", ");
+        setError(reasons ? `Demo confirm blocked: ${reasons}` : payload.error ?? "Demo confirm blocked");
+      }
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -217,6 +283,66 @@ export function TradeGateBoard() {
             <Card>
               <p className="font-mono text-xs">{result.status}</p>
               {result.blockReasons.length > 0 ? <p className="mt-1 text-destructive">{result.blockReasons.join(", ")}</p> : null}
+            </Card>
+          ) : null}
+          {signal.state === "TRADE_PLANNED" || result?.status === "APPROVED" ? (
+            <Card>
+              <p className="text-sm font-semibold">Demo execution</p>
+              {execution && !execution.allowed ? (
+                <p className="mt-2 font-mono text-xs text-muted-foreground">
+                  Demo send is hidden: {execution.blockReasons.join(", ") || "isolation"}.
+                </p>
+              ) : blocked ? (
+                <p className="mt-2 font-mono text-xs text-muted-foreground">Confirm is hidden while a hard risk rule fails.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <p className="font-mono text-xs text-muted-foreground">Leverage 1 · Demo account only. Preview does not place an order.</p>
+                  {order?.status === "FILLED" ? (
+                    <p className="font-mono text-xs">FILLED{order.etoroOrderId ? ` · ${order.etoroOrderId}` : ""}</p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={cn("rounded-sm border border-border px-3 py-2 font-mono text-xs uppercase", {
+                          "opacity-50": previewing || confirming,
+                        })}
+                        disabled={previewing || confirming}
+                        onClick={() => void previewDemo({ planId: result?.planId })}
+                      >
+                        {order?.status === "AMBIGUOUS"
+                          ? "Resume Demo reconcile"
+                          : previewing
+                            ? "Previewing…"
+                            : "Preview Demo order"}
+                      </button>
+                      {preview?.allowed && preview.nonce ? (
+                        <>
+                          <p className="font-mono text-xs text-muted-foreground">
+                            Amount {preview.amount ?? "—"} · Stop {preview.stopLoss ?? "—"} · Target {preview.takeProfit ?? "—"}
+                          </p>
+                          <button
+                            type="button"
+                            className={cn("rounded-sm border border-border px-3 py-2 font-mono text-xs uppercase", {
+                              "text-foreground": !confirming,
+                              "opacity-50": confirming,
+                            })}
+                            disabled={confirming}
+                            onClick={() => void confirmDemo()}
+                          >
+                            {confirming ? "Sending…" : "Confirm Demo send"}
+                          </button>
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                  {order && order.status !== "FILLED" ? (
+                    <p className="font-mono text-xs">{order.status}{order.blockReasons.length ? ` · ${order.blockReasons.join(", ")}` : ""}</p>
+                  ) : null}
+                  {preview && !preview.allowed && preview.blockReasons.length > 0 ? (
+                    <p className="font-mono text-xs text-destructive">{preview.blockReasons.join(", ")}</p>
+                  ) : null}
+                </div>
+              )}
             </Card>
           ) : null}
         </>

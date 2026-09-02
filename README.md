@@ -56,7 +56,7 @@ pnpm lint
 
 ## eToro API / MCP
 
-`.cursor/mcp.json` points at the hosted eToro Public API MCP server. Before implementing any eToro route, use `get-all-routes` and `get-route-spec`. Do not invent endpoints. Milestone 1 routes were taken from official OpenAPI `v1.365.1` because the hosted MCP required credentials for catalog access in this environment — see `docs/adr/ADR-007-etoro-route-discovery.md`.
+`.cursor/mcp.json` points at the hosted eToro Public API MCP server. Before implementing any eToro route, use the official API Docs / OpenAPI (hosted MCP often requires auth). Do not invent endpoints. See `docs/adr/ADR-007-etoro-route-discovery.md`.
 
 Register keys at [api-portal.etoro.com](https://api-portal.etoro.com/).
 
@@ -66,6 +66,8 @@ Register keys at [api-portal.etoro.com](https://api-portal.etoro.com/).
 | --- | --- | --- |
 | `ETORO_API_KEY` | server only | Never `NEXT_PUBLIC_` |
 | `ETORO_USER_KEY` | server only | Never `NEXT_PUBLIC_` |
+| `ETORO_ACCOUNT_TYPE` | server only | `real` or `demo`. Default `real`. Never `NEXT_PUBLIC_` |
+| `DEMO_EXECUTION_ENABLED` | server only | Default false. Demo orders require this, `ETORO_ACCOUNT_TYPE=demo`, and `APP_PASSWORD`. Never `NEXT_PUBLIC_` |
 | `DATABASE_URL` | server | Postgres |
 | `REDIS_URL` | server | Redis |
 | `APP_PASSWORD` | server only | Optional. Unset is an insecure local default. When set (min 12), the API and UI require a session. Never `NEXT_PUBLIC_` |
@@ -74,7 +76,7 @@ Register keys at [api-portal.etoro.com](https://api-portal.etoro.com/).
 
 ## Safety
 
-Live-money order placement is out of scope until a later milestone. The eToro client in this repository is read-only.
+Live-money order placement is forbidden. Demo orders require `ETORO_ACCOUNT_TYPE=demo`, `DEMO_EXECUTION_ENABLED=true`, `APP_PASSWORD`, a Demo user-key probe, preview, and explicit confirm. See `docs/adr/ADR-016-demo-execution-isolation.md`.
 
 Leaving `APP_PASSWORD` empty keeps the local API and UI open. Set it before exposing the API beyond localhost.
 

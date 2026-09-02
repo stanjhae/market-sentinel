@@ -6,8 +6,8 @@ Accepted
 
 ## Decision
 
-The application is read-only for live-money orders until a later milestone with explicit safety controls. The eToro client must not expose money-moving methods in Milestones 0–7.
+The application is read-only for live-money orders. Milestone 9 may place **Demo** orders only, behind the isolation rules in ADR-016. The eToro client must not expose Real execution methods.
 
 ## Consequences
 
-Users execute on eToro manually. Sentinel journals and gates; it does not place live orders.
+Users may confirm Demo orders after Trade Gate approval. Live-money and Real execution paths stay out of the repository.

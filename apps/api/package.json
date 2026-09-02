@@ -18,6 +18,7 @@
     "@market-sentinel/db": "workspace:*",
     "@fastify/multipart": "^9.2.1",
     "@market-sentinel/domain": "workspace:*",
+    "@market-sentinel/etoro-client": "workspace:*",
     "@market-sentinel/journal": "workspace:*",
     "@market-sentinel/market-structure": "workspace:*",
     "@market-sentinel/observability": "workspace:*",
