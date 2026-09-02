@@ -45,7 +45,7 @@ Legal forward edges only. A first appearance always lands on `DETECTED` even if 
 
 ### Hard filters
 
-Insufficient data and a known stale/disconnected stream freeze live evaluation (no create, advance, or expire) and force display score `0` while keeping the raw factor breakdown. Empty zones are not insufficient data for `do-not-chase`. Daily loss, consecutive loss, cooldown, and news blackout are treated as clean and recorded as `stubUntil: "M6"` in score evidence.
+Insufficient data and a known stale/disconnected stream freeze live evaluation (no create, advance, or expire) and force display score `0` while keeping the raw factor breakdown. Empty zones are not insufficient data for `do-not-chase`. Daily loss, consecutive loss, cooldown, and news blackout are live hard filters as of ADR-012.
 
 R:R below `2.0` blocks a `CONFIRMED` display score (`0` + `blockedReason`) but does not hide `DETECTED` / `WATCHING`.
 

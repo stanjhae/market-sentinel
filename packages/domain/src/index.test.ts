@@ -18,6 +18,10 @@ import {
   shouldEmitAlert,
   shouldPublishStreamStatus,
   alertSendDecision,
+  mergeRiskProfile,
+  decidePlanGate,
+  parseEventTimeUtc,
+  plannedEntryFromZone,
   type Trend,
   type ZoneSource,
 } from "./index.js";
@@ -77,11 +81,11 @@ describe("alerts", () => {
     );
   });
 
-  it("mutes historical evaluation and Milestone 6 stubs", () => {
+  it("mutes historical evaluation and emits Milestone 6 alert types live", () => {
     expect(shouldEmitAlert({ streamGate: "historical", type: "WATCHLIST_OPPORTUNITY" })).toBe(false);
     expect(shouldEmitAlert({ streamGate: "live", type: "WATCHLIST_OPPORTUNITY" })).toBe(true);
-    expect(shouldEmitAlert({ streamGate: "live", type: "RISK_LIMIT_HIT" })).toBe(false);
-    expect(isM6StubAlertType({ type: "POSITION_CLOSED" })).toBe(true);
+    expect(shouldEmitAlert({ streamGate: "live", type: "RISK_LIMIT_HIT" })).toBe(true);
+    expect(isM6StubAlertType({ type: "POSITION_CLOSED" })).toBe(false);
   });
 
   it("maps signal transitions without alerting dismissed or planned states", () => {
@@ -243,5 +247,34 @@ describe("alerts", () => {
     expect(copy.body).toContain("4H bearish correction.");
     expect(copy.body).not.toContain("TELEGRAM");
     expect(copy.body).not.toContain("token");
+  });
+});
+
+describe("risk profile", () => {
+  it("fills SPEC defaults and merges named numeric fields", () => {
+    expect(mergeRiskProfile({ raw: {} }).maxDailyLossPct).toBe(3);
+    expect(mergeRiskProfile({ raw: { maxRiskPerTradePct: 0.5 } }).maxRiskPerTradePct).toBe(0.5);
+  });
+});
+
+describe("trade gate helpers", () => {
+  it("averages a zone and treats datetime-local as UTC", () => {
+    expect(plannedEntryFromZone({ low: "100", high: "102" })).toBe("101");
+    expect(parseEventTimeUtc({ value: "2026-09-02T12:00" })?.toISOString()).toBe("2026-09-02T12:00:00.000Z");
+  });
+
+  it("refuses WATCHING and forged-checklist-unblock without CONFIRMED", () => {
+    expect(
+      decidePlanGate({ allowed: false, checklistComplete: true, signalState: "CONFIRMED" }),
+    ).toBe("BLOCKED");
+    expect(
+      decidePlanGate({ allowed: true, checklistComplete: false, signalState: "CONFIRMED" }),
+    ).toBe("PENDING_CHECKLIST");
+    expect(
+      decidePlanGate({ allowed: true, checklistComplete: true, signalState: "WATCHING" }),
+    ).toBe("NOT_CONFIRMED");
+    expect(
+      decidePlanGate({ allowed: true, checklistComplete: true, signalState: "CONFIRMED" }),
+    ).toBe("APPROVE");
   });
 });

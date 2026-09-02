@@ -1,8 +1,8 @@
 import cors from "@fastify/cors";
 import { hasEtoroCredentials, hasTelegramCredentials } from "@market-sentinel/config";
-import { REDIS_KEYS, sseEventSchema } from "@market-sentinel/contracts";
+import { psychologyChecklistSchema, REDIS_KEYS, sseEventSchema } from "@market-sentinel/contracts";
 import { createDb } from "@market-sentinel/db";
-import { parseWatchlistSymbol } from "@market-sentinel/domain";
+import { parseEventTimeUtc, parseWatchlistSymbol, RISK_DEFAULTS } from "@market-sentinel/domain";
 import Fastify from "fastify";
 import { Redis } from "ioredis";
 import {
@@ -16,10 +16,13 @@ import {
 } from "./alerts.js";
 import { emptyCandles, emptyContext, parseIsoDateQuery, parseTimeframeQuery, readCandles, readMarketContext } from "./candles.js";
 import { loadApiEnv } from "./env.js";
+import { emptyHistory, emptyPositions, readAccountSnapshot, readHistory, readPositions } from "./account.js";
+import { createEvent, deleteEvent, emptyEvents, readEvents } from "./events.js";
 import { disconnectedMarkets, emptyAccount, readAccount, readMarkets } from "./markets.js";
+import { emptyRiskStatus, evaluateStoredPlan, readRiskStatus, setManualCooldown } from "./risk.js";
 import { emptySettings, patchAlertSettings, patchJsonBucket, readSettings } from "./settings.js";
 import { createManualZone, deleteManualZone, emptyZones, parseManualZoneBody, readZones, updateManualZone } from "./zones.js";
-import { dismissStoredSignal, emptySignalDetail, emptySignals, parseSignalFilters, readSignal, readSignals, stubCreatePlan } from "./signals.js";
+import { createApprovedPlan, dismissStoredSignal, emptySignalDetail, emptySignals, parseSignalFilters, readSignal, readSignals } from "./signals.js";
 
 export async function buildServer() {
   const env = loadApiEnv();
@@ -386,14 +389,30 @@ export async function buildServer() {
     if (!(await pingDatabase())) {
       return reply.code(503).send({ error: "database unavailable" });
     }
-    const result = await stubCreatePlan({ db: dbPair.db, redis, id: params.id });
-    if (!result.ok && result.reason === "not_found") {
+    const body = (request.body ?? {}) as {
+      checklist?: unknown;
+      riskPct?: string;
+      logRejection?: boolean;
+    };
+    const checklist = body.checklist ? psychologyChecklistSchema.safeParse(body.checklist) : { success: true as const, data: null };
+    if (!checklist.success) {
+      return reply.code(400).send({ error: "invalid checklist" });
+    }
+    const result = await createApprovedPlan({
+      db: dbPair.db,
+      redis,
+      id: params.id,
+      checklist: checklist.data,
+      riskPct: typeof body.riskPct === "string" ? body.riskPct : undefined,
+      logRejection: body.logRejection === true,
+    });
+    if ("error" in result) {
       return reply.code(404).send({ error: "signal not found" });
     }
-    if (!result.ok) {
-      return reply.code(409).send({ error: "create-plan requires CONFIRMED" });
+    if (result.status === "BLOCKED") {
+      return reply.code(409).send(result);
     }
-    return { status: "STUB" as const, signalId: result.signalId };
+    return result;
   });
 
   app.get("/account", async () => {
@@ -401,6 +420,147 @@ export async function buildServer() {
       return emptyAccount();
     }
     return readAccount(redis);
+  });
+
+  app.get("/account/positions", async () => {
+    if (!(await pingDatabase())) {
+      return emptyPositions();
+    }
+    try {
+      return await readPositions({ db: dbPair.db });
+    } catch {
+      return emptyPositions();
+    }
+  });
+
+  app.get("/account/history", async () => {
+    if (!(await pingDatabase())) {
+      return emptyHistory();
+    }
+    try {
+      const account = (await pingRedis()) ? await readAccountSnapshot({ redis }) : emptyAccount();
+      return await readHistory({ db: dbPair.db, historyUnavailable: account.historyUnavailable });
+    } catch {
+      return emptyHistory();
+    }
+  });
+
+  app.post("/account/sync", async () => {
+    if (!(await pingRedis())) {
+      return emptyAccount();
+    }
+    await redis.set(REDIS_KEYS.forceAccountSync, new Date().toISOString());
+    return readAccount(redis);
+  });
+
+  app.get("/risk/status", async () => {
+    if (!(await pingDatabase())) {
+      return emptyRiskStatus();
+    }
+    try {
+      return await readRiskStatus({ db: dbPair.db, redis });
+    } catch {
+      return emptyRiskStatus();
+    }
+  });
+
+  app.post("/risk/evaluate-plan", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const body = request.body as {
+      symbol?: string;
+      direction?: "LONG" | "SHORT" | "NEUTRAL";
+      plannedEntry?: string | null;
+      stopLoss?: string | null;
+      target1?: string | null;
+      riskPct?: string | null;
+      riskRewardToT1?: string | null;
+    };
+    const symbol = parseWatchlistSymbol({ value: body.symbol ?? "" });
+    if (!symbol || !body.direction) {
+      return reply.code(400).send({ error: "invalid plan" });
+    }
+    return evaluateStoredPlan({
+      db: dbPair.db,
+      plan: {
+        symbol,
+        direction: body.direction,
+        plannedEntry: body.plannedEntry ?? null,
+        stopLoss: body.stopLoss ?? null,
+        target1: body.target1 ?? null,
+        riskPct: body.riskPct ?? null,
+        riskRewardToT1: body.riskRewardToT1 ?? null,
+      },
+    });
+  });
+
+  app.post("/risk/cooldown", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const body = request.body as { minutes?: number; until?: string };
+    const until = body.until
+      ? new Date(body.until)
+      : new Date(Date.now() + (body.minutes ?? RISK_DEFAULTS.cooldownAfterLossMinutes) * 60 * 1000);
+    if (Number.isNaN(until.getTime())) {
+      return reply.code(400).send({ error: "invalid cooldown" });
+    }
+    await setManualCooldown({ db: dbPair.db, until });
+    return readRiskStatus({ db: dbPair.db, redis });
+  });
+
+  app.get("/events", async () => {
+    if (!(await pingDatabase())) {
+      return emptyEvents();
+    }
+    try {
+      return await readEvents({ db: dbPair.db });
+    } catch {
+      return emptyEvents();
+    }
+  });
+
+  app.post("/events", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const body = request.body as {
+      eventName?: string;
+      currency?: string;
+      impact?: "LOW" | "MEDIUM" | "HIGH";
+      scheduledAtUtc?: string;
+      blackoutBeforeMinutes?: number;
+      blackoutAfterMinutes?: number;
+    };
+    if (!body.eventName || !body.currency || !body.scheduledAtUtc) {
+      return reply.code(400).send({ error: "invalid event" });
+    }
+    const scheduledAtUtc = parseEventTimeUtc({ value: body.scheduledAtUtc });
+    if (!scheduledAtUtc) {
+      return reply.code(400).send({ error: "invalid event time" });
+    }
+    return createEvent({
+      db: dbPair.db,
+      eventName: body.eventName,
+      currency: body.currency,
+      impact: body.impact === "LOW" || body.impact === "MEDIUM" ? body.impact : "HIGH",
+      scheduledAtUtc,
+      blackoutBeforeMinutes: body.blackoutBeforeMinutes,
+      blackoutAfterMinutes: body.blackoutAfterMinutes,
+    });
+  });
+
+  app.delete("/events/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const deleted = await deleteEvent({ db: dbPair.db, id: params.id });
+    if (!deleted) {
+      return reply.code(404).send({ error: "event not found" });
+    }
+    return readEvents({ db: dbPair.db });
   });
 
   app.get("/stream", async (request, reply) => {
@@ -454,9 +614,6 @@ export async function buildServer() {
         try {
           const parsed = sseEventSchema.safeParse(JSON.parse(message));
           if (!parsed.success) {
-            return;
-          }
-          if (parsed.data.type === "account" || parsed.data.type === "risk") {
             return;
           }
           reply.raw.write(`data: ${JSON.stringify(parsed.data)}\n\n`);

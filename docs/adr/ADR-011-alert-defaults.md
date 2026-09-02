@@ -54,7 +54,7 @@ Do not use `Last-Event-ID` to replay. On connect: current markets snapshot plus 
 
 ### Milestone 6 stubs
 
-`RISK_LIMIT_HIT`, `POSITION_DETECTED`, and `POSITION_CLOSED` are typed and never emitted (`stubUntil: "M6"`).
+`RISK_LIMIT_HIT`, `POSITION_DETECTED`, and `POSITION_CLOSED` were typed and stubbed until Milestone 6. They are live as of ADR-012.
 
 ### Settings
 

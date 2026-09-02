@@ -4,7 +4,7 @@ export { decimalString } from "./format.js";
 export { createRequestId } from "./request-id.js";
 export { isIdempotentMethod, shouldRetry } from "./retry.js";
 export { pickUnambiguousInstrument, resolveWatchlistInstrument, SYMBOL_ALIASES } from "./resolve.js";
-export { EtoroRestClient, EtoroRestError } from "./rest.js";
+export { EtoroRestClient, EtoroRestError, flattenHistoryItems, isInsufficientPermissions } from "./rest.js";
 export {
   ETORO_CANDLE_INTERVAL,
   ETORO_ORIGIN,
@@ -21,6 +21,11 @@ export type {
   EtoroAccountType,
   EtoroCandlesResponse,
   EtoroClientConfig,
+  EtoroClientPortfolio,
+  EtoroHistoryItem,
+  EtoroHistoryResponse,
+  EtoroPnlPosition,
+  EtoroPnlResponse,
   InstrumentSearchItem,
   LiveRate,
   MarketTick,

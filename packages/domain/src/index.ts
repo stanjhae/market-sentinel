@@ -101,6 +101,140 @@ export function opportunityLabelFromScore(args: { score: number }): OpportunityL
 
 export type TradingStatus = "ACTIVE" | "COOLDOWN" | "SESSION_BLOCKED" | "NEWS_BLACKOUT";
 
+export type GateStatus = "BLOCKED" | "PENDING_CHECKLIST" | "APPROVED" | "REJECTED";
+
+export type EntryType = "MARKET" | "LIMIT" | "STOP";
+
+export type EventImpact = "LOW" | "MEDIUM" | "HIGH";
+
+export type CorrelationBucket = "EQUITY_INDEX" | "GOLD" | "OTHER";
+
+export function plannedEntryFromZone(args: { low: string | null; high: string | null }): string | null {
+  if (args.low && args.high) {
+    const low = Number(args.low);
+    const high = Number(args.high);
+    if (Number.isFinite(low) && Number.isFinite(high)) {
+      return String((low + high) / 2);
+    }
+  }
+  return args.low;
+}
+
+export function parseEventTimeUtc(args: { value: string }): Date | null {
+  const raw = args.value.trim();
+  if (!raw) {
+    return null;
+  }
+  const hasZone = raw.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(raw);
+  const iso = hasZone ? raw : raw.length === 16 ? `${raw}:00.000Z` : `${raw}Z`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function decidePlanGate(args: {
+  allowed: boolean;
+  checklistComplete: boolean;
+  signalState: SignalState;
+}): "BLOCKED" | "PENDING_CHECKLIST" | "NOT_CONFIRMED" | "APPROVE" {
+  if (!args.allowed) {
+    return "BLOCKED";
+  }
+  if (!args.checklistComplete) {
+    return "PENDING_CHECKLIST";
+  }
+  if (args.signalState !== "CONFIRMED") {
+    return "NOT_CONFIRMED";
+  }
+  return "APPROVE";
+}
+
+export function correlationBucket(args: { symbol: string }): CorrelationBucket {
+  if (args.symbol === "US30" || args.symbol === "US100" || args.symbol === "SPX500") {
+    return "EQUITY_INDEX";
+  }
+  if (args.symbol === "GOLD") {
+    return "GOLD";
+  }
+  return "OTHER";
+}
+
+export const PSYCHOLOGY_CHECKLIST_KEYS = [
+  "definedEntry",
+  "definedStop",
+  "minimumRr",
+  "notRecovering",
+  "notChasing",
+  "knowHtf",
+  "noBlackoutImminent",
+  "wouldStillTake",
+] as const;
+
+export type PsychologyChecklistKey = (typeof PSYCHOLOGY_CHECKLIST_KEYS)[number];
+
+export type PsychologyChecklist = Record<PsychologyChecklistKey, boolean>;
+
+export const RISK_DEFAULTS = {
+  maxRiskPerTradePct: 1,
+  maxDailyLossPct: 3,
+  maxConsecutiveLosses: 2,
+  cooldownAfterLossMinutes: 15,
+  minimumRewardRisk: 2,
+  maxConcurrentCorrelatedPositions: 1,
+  prohibitRiskIncreaseAfterLoss: true,
+  prohibitMartingale: true,
+  historyLookbackDays: 30,
+  accountPollMs: 60_000,
+  syncDebounceMs: 10_000,
+  blackoutBeforeMinutes: 10,
+  blackoutAfterMinutes: 10,
+} as const;
+
+export type RiskProfile = {
+  maxRiskPerTradePct: number;
+  maxDailyLossPct: number;
+  maxConsecutiveLosses: number;
+  cooldownAfterLossMinutes: number;
+  minimumRewardRisk: number;
+  maxConcurrentCorrelatedPositions: number;
+  prohibitRiskIncreaseAfterLoss: boolean;
+  prohibitMartingale: boolean;
+};
+
+export const DEFAULT_RISK_PROFILE: RiskProfile = {
+  maxRiskPerTradePct: RISK_DEFAULTS.maxRiskPerTradePct,
+  maxDailyLossPct: RISK_DEFAULTS.maxDailyLossPct,
+  maxConsecutiveLosses: RISK_DEFAULTS.maxConsecutiveLosses,
+  cooldownAfterLossMinutes: RISK_DEFAULTS.cooldownAfterLossMinutes,
+  minimumRewardRisk: RISK_DEFAULTS.minimumRewardRisk,
+  maxConcurrentCorrelatedPositions: RISK_DEFAULTS.maxConcurrentCorrelatedPositions,
+  prohibitRiskIncreaseAfterLoss: RISK_DEFAULTS.prohibitRiskIncreaseAfterLoss,
+  prohibitMartingale: RISK_DEFAULTS.prohibitMartingale,
+};
+
+export function mergeRiskProfile(args: { raw: unknown }): RiskProfile {
+  const value = args.raw && typeof args.raw === "object" ? (args.raw as Record<string, unknown>) : {};
+  const numberField = (key: keyof RiskProfile, fallback: number) =>
+    typeof value[key] === "number" && Number.isFinite(value[key]) ? (value[key] as number) : fallback;
+  const boolField = (key: keyof RiskProfile, fallback: boolean) =>
+    typeof value[key] === "boolean" ? (value[key] as boolean) : fallback;
+  return {
+    maxRiskPerTradePct: numberField("maxRiskPerTradePct", DEFAULT_RISK_PROFILE.maxRiskPerTradePct),
+    maxDailyLossPct: numberField("maxDailyLossPct", DEFAULT_RISK_PROFILE.maxDailyLossPct),
+    maxConsecutiveLosses: numberField("maxConsecutiveLosses", DEFAULT_RISK_PROFILE.maxConsecutiveLosses),
+    cooldownAfterLossMinutes: numberField("cooldownAfterLossMinutes", DEFAULT_RISK_PROFILE.cooldownAfterLossMinutes),
+    minimumRewardRisk: numberField("minimumRewardRisk", DEFAULT_RISK_PROFILE.minimumRewardRisk),
+    maxConcurrentCorrelatedPositions: numberField(
+      "maxConcurrentCorrelatedPositions",
+      DEFAULT_RISK_PROFILE.maxConcurrentCorrelatedPositions,
+    ),
+    prohibitRiskIncreaseAfterLoss: boolField(
+      "prohibitRiskIncreaseAfterLoss",
+      DEFAULT_RISK_PROFILE.prohibitRiskIncreaseAfterLoss,
+    ),
+    prohibitMartingale: boolField("prohibitMartingale", DEFAULT_RISK_PROFILE.prohibitMartingale),
+  };
+}
+
 export type StreamFreshness = "LIVE" | "DELAYED" | "STALE" | "DISCONNECTED";
 
 export type PivotType = "HIGH" | "LOW";

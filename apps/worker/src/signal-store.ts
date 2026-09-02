@@ -23,6 +23,7 @@ import { createLogger } from "@market-sentinel/observability";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
+import { readScoreRisk } from "./account-store.js";
 import {
   maybeAlertScoreCross,
   maybeAlertSignalTransition,
@@ -103,6 +104,7 @@ export async function evaluateSignals(args: {
     return;
   }
   const previousScore = await readCachedScore({ redis: args.redis, symbol: args.instrument.symbol });
+  const risk = await readScoreRisk({ redis: args.redis });
   const evaluations = evaluateAllStrategies({ snapshot });
   const openRows = await args.db
     .select()
@@ -121,6 +123,7 @@ export async function evaluateSignals(args: {
       current: openByKey.get(`${evaluation.strategyKey}:${evaluation.direction}`) ?? null,
       streamGate: args.streamGate ?? "live",
       telegram: args.telegram,
+      risk,
     });
   }
   for (const row of openRows) {
@@ -142,6 +145,7 @@ export async function evaluateSignals(args: {
       current: row,
       streamGate: args.streamGate ?? "live",
       telegram: args.telegram,
+      risk,
     });
   }
   await cacheSignalSummary({ db: args.db, redis: args.redis, instrument: args.instrument });
@@ -176,6 +180,7 @@ async function applyAndPersist(args: {
   current: typeof signals.$inferSelect | null;
   streamGate: "live" | "historical";
   telegram?: TelegramCredentials;
+  risk?: { dailyLossHit?: boolean; consecutiveLossHit?: boolean; cooldownActive?: boolean; newsBlackout?: boolean };
 }): Promise<void> {
   const current = args.current ? rowToSignal({ row: args.current }) : null;
   const lastProgress = current?.watchingAt ?? current?.confirmedAt ?? current?.detectedAt ?? args.snapshot.lastFinalOpenTimeUtc;
@@ -187,6 +192,7 @@ async function applyAndPersist(args: {
     barsElapsed15m: barsElapsed15m({ from: lastProgress, to: args.snapshot.lastFinalOpenTimeUtc }),
     idFactory: () => randomUUID(),
     symbol: args.instrument.symbol,
+    risk: args.risk,
   });
   if (!result.next) {
     return;

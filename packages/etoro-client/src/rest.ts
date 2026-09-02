@@ -7,6 +7,9 @@ import type {
   AggregatedPortfolioResponse,
   EtoroCandlesResponse,
   EtoroClientConfig,
+  EtoroHistoryItem,
+  EtoroHistoryResponse,
+  EtoroPnlResponse,
   InstrumentSearchResponse,
   LiveRatesResponse,
   NormalizedHistoryCandle,
@@ -121,6 +124,46 @@ export class EtoroRestClient {
     });
   }
 
+  async getAccountPnl(): Promise<{
+    data: EtoroPnlResponse;
+    requestId: string;
+  }> {
+    const path = this.config.accountType === "demo" ? ETORO_ROUTES.pnlDemo : ETORO_ROUTES.pnlReal;
+    return this.request<EtoroPnlResponse>({
+      method: "GET",
+      path,
+    });
+  }
+
+  async getTradeHistory(args: {
+    minDate: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{
+    data: EtoroHistoryResponse;
+    requestId: string;
+    items: EtoroHistoryItem[];
+  }> {
+    const path =
+      this.config.accountType === "demo" ? ETORO_ROUTES.tradeHistoryDemo : ETORO_ROUTES.tradeHistoryReal;
+    const query: Record<string, string> = { minDate: args.minDate };
+    if (args.page !== undefined) {
+      query.page = String(args.page);
+    }
+    if (args.pageSize !== undefined) {
+      query.pageSize = String(args.pageSize);
+    }
+    const result = await this.request<EtoroHistoryResponse>({
+      method: "GET",
+      path,
+      query,
+    });
+    return {
+      ...result,
+      items: flattenHistoryItems({ data: result.data }),
+    };
+  }
+
   private async request<T>(args: {
     method: string;
     path: string;
@@ -194,4 +237,21 @@ export class EtoroRestClient {
 
     throw lastError instanceof Error ? lastError : new Error("eToro REST request failed");
   }
+}
+
+export function isInsufficientPermissions(args: { error: unknown }): boolean {
+  if (!(args.error instanceof EtoroRestError)) {
+    return false;
+  }
+  return args.error.status === 403 && /InsufficientPermissions/i.test(args.error.body);
+}
+
+export function flattenHistoryItems(args: { data: EtoroHistoryResponse }): EtoroHistoryItem[] {
+  if (Array.isArray(args.data.items)) {
+    return args.data.items;
+  }
+  if (args.data.items && typeof args.data.items === "object") {
+    return [args.data.items];
+  }
+  return [];
 }

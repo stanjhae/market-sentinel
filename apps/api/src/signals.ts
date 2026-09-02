@@ -1,7 +1,18 @@
-import type { SignalDto, SignalDetailResponse, SignalsResponse } from "@market-sentinel/contracts";
+import type { CreatePlanResponse, SignalDto, SignalDetailResponse, SignalsResponse } from "@market-sentinel/contracts";
 import { REDIS_KEYS } from "@market-sentinel/contracts";
-import { signals, type Database } from "@market-sentinel/db";
-import { entryStatusFromState, isTimeframe, parseWatchlistSymbol, type SignalState, type Timeframe } from "@market-sentinel/domain";
+import { accountSnapshots, auditLogs, signals, tradePlans, type Database } from "@market-sentinel/db";
+import {
+  decidePlanGate,
+  entryStatusFromState,
+  isTimeframe,
+  parseWatchlistSymbol,
+  plannedEntryFromZone,
+  type PsychologyChecklist,
+  type SignalState,
+  type Timeframe,
+} from "@market-sentinel/domain";
+import { randomUUID } from "node:crypto";
+import { checklistOrReject, evaluateStoredPlan } from "./risk.js";
 import { bestOpenTradeSetup, createPlanStub, dismissSignal, type SignalRecord } from "@market-sentinel/strategies";
 import { and, desc, eq, gte, inArray, notInArray, type SQL } from "drizzle-orm";
 import { Redis } from "ioredis";
@@ -132,20 +143,133 @@ export async function dismissStoredSignal(args: {
   return "ok";
 }
 
-export async function stubCreatePlan(args: {
+export async function createApprovedPlan(args: {
   db: Database;
   redis: Redis;
   id: string;
-}): Promise<{ ok: true; signalId: string } | { ok: false; reason: "not_found" | "not_confirmed" }> {
+  checklist: PsychologyChecklist | null;
+  riskPct?: string;
+  logRejection?: boolean;
+}): Promise<CreatePlanResponse | { error: "not_found" }> {
   const rows = await args.db.select().from(signals).where(eq(signals.id, args.id)).limit(1);
   const row = rows[0];
   if (!row) {
-    return { ok: false, reason: "not_found" };
+    return { error: "not_found" };
+  }
+  const checklist = checklistOrReject({ checklist: args.checklist });
+  const snapshots = await args.db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.timestamp)).limit(1);
+  const plannedEntry = plannedEntryFromZone({ low: row.entryZoneLow, high: row.entryZoneHigh });
+  const evaluation = await evaluateStoredPlan({
+    db: args.db,
+    plan: {
+      symbol: row.symbol,
+      direction: row.direction as SignalRecord["direction"],
+      plannedEntry,
+      stopLoss: row.invalidationPrice,
+      target1: row.target1,
+      riskPct: args.riskPct ?? null,
+      riskRewardToT1: row.riskRewardToT1,
+    },
+  });
+  const decision = decidePlanGate({
+    allowed: evaluation.allowed,
+    checklistComplete: checklist.complete,
+    signalState: row.state as SignalState,
+  });
+  if (decision === "BLOCKED") {
+    const planId = randomUUID();
+    await args.db.insert(tradePlans).values({
+      id: planId,
+      signalId: row.id,
+      accountSnapshotId: snapshots[0]?.id ?? null,
+      direction: row.direction,
+      entryType: "MARKET",
+      plannedEntry,
+      stopLoss: row.invalidationPrice,
+      target1: row.target1,
+      target2: row.target2,
+      target3: row.target3,
+      riskPct: args.riskPct ?? evaluation.maxRiskPct,
+      riskAmountUsd: evaluation.maxLossUsd,
+      estimatedPositionSize: evaluation.positionSizeUsd,
+      expectedR: evaluation.expectedR,
+      gateStatus: "BLOCKED",
+      blockReasonsJson: evaluation.blockReasons,
+      checklistJson: args.checklist,
+    });
+    return {
+      status: "BLOCKED",
+      signalId: row.id,
+      planId,
+      allowed: false,
+      blockReasons: evaluation.blockReasons,
+      missingChecklist: checklist.missing,
+      evaluation,
+    };
+  }
+  if (decision === "PENDING_CHECKLIST") {
+    if (args.logRejection) {
+      await args.db.insert(auditLogs).values({
+        id: randomUUID(),
+        eventType: "CHECKLIST_REJECTED",
+        instrumentId: row.instrumentId,
+        payloadJson: { signalId: row.id, missing: checklist.missing },
+      });
+    }
+    return {
+      status: "PENDING_CHECKLIST",
+      signalId: row.id,
+      planId: null,
+      allowed: false,
+      blockReasons: ["checklist-incomplete"],
+      missingChecklist: checklist.missing,
+      evaluation,
+    };
+  }
+  if (decision === "NOT_CONFIRMED") {
+    return {
+      status: "BLOCKED",
+      signalId: row.id,
+      planId: null,
+      allowed: false,
+      blockReasons: ["not-confirmed"],
+      missingChecklist: [],
+      evaluation,
+    };
   }
   const result = createPlanStub({ current: recordFromRow({ row }), now: new Date() });
   if (!result.changed || !result.next) {
-    return { ok: false, reason: "not_confirmed" };
+    return {
+      status: "BLOCKED",
+      signalId: row.id,
+      planId: null,
+      allowed: false,
+      blockReasons: ["not-confirmed"],
+      missingChecklist: [],
+      evaluation,
+    };
   }
+  const planId = randomUUID();
+  await args.db.insert(tradePlans).values({
+    id: planId,
+    signalId: row.id,
+    accountSnapshotId: snapshots[0]?.id ?? null,
+    direction: row.direction,
+    entryType: "MARKET",
+    plannedEntry,
+    stopLoss: row.invalidationPrice,
+    target1: row.target1,
+    target2: row.target2,
+    target3: row.target3,
+    riskPct: args.riskPct ?? evaluation.maxRiskPct,
+    riskAmountUsd: evaluation.maxLossUsd,
+    estimatedPositionSize: evaluation.positionSizeUsd,
+    expectedR: evaluation.expectedR,
+    gateStatus: "APPROVED",
+    blockReasonsJson: [],
+    checklistJson: args.checklist,
+    approvedAt: new Date(),
+  });
   await args.db
     .update(signals)
     .set({
@@ -157,7 +281,15 @@ export async function stubCreatePlan(args: {
     })
     .where(eq(signals.id, args.id));
   await cacheSignalSummary({ db: args.db, redis: args.redis, symbol: row.symbol, instrumentId: row.instrumentId });
-  return { ok: true, signalId: args.id };
+  return {
+    status: "APPROVED",
+    signalId: row.id,
+    planId,
+    allowed: true,
+    blockReasons: [],
+    missingChecklist: [],
+    evaluation,
+  };
 }
 
 export function matchesFilters(args: { row: typeof signals.$inferSelect; filters: SignalFilters }): boolean {

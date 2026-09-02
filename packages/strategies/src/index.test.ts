@@ -294,7 +294,12 @@ describe("opportunity score", () => {
         score.factors.rewardRisk +
         score.factors.eventRisk,
     );
-    expect(score.evidence.stubUntil).toBe("M6");
+    expect(score.evidence.hardFilters).toEqual(["daily-loss", "consecutive-loss", "cooldown", "news-blackout"]);
+    expect(scoreOpportunity({ snapshot, evaluation, risk: { dailyLossHit: true } }).blockedReason).toBe("daily-loss");
+    expect(scoreOpportunity({ snapshot, evaluation, risk: { dailyLossHit: true } }).display).toBe(0);
+    expect(scoreOpportunity({ snapshot, evaluation, risk: { consecutiveLossHit: true } }).blockedReason).toBe("consecutive-loss");
+    expect(scoreOpportunity({ snapshot, evaluation, risk: { cooldownActive: true } }).blockedReason).toBe("cooldown");
+    expect(scoreOpportunity({ snapshot, evaluation, risk: { newsBlackout: true } }).blockedReason).toBe("news-blackout");
     expect(evaluation.proposedState).toBe("CONFIRMED");
     expect(score.display).toBeGreaterThan(0);
   });
@@ -477,6 +482,9 @@ describe("state machine release", () => {
       symbol: "US30",
     });
     expect(cleared.next?.state).toBe("INVALIDATED");
+    expect(createPlanStub({ current: { ...confirmed!, state: "WATCHING" }, now: new Date("2026-09-01T13:00:00.000Z") }).changed).toBe(
+      false,
+    );
     const planned = createPlanStub({ current: confirmed!, now: new Date("2026-09-01T13:00:00.000Z") });
     expect(planned.next?.state).toBe("TRADE_PLANNED");
     const plannedGone = applySignalTransition({

@@ -19,6 +19,7 @@
     "@market-sentinel/indicators": "workspace:*",
     "@market-sentinel/market-structure": "workspace:*",
     "@market-sentinel/observability": "workspace:*",
+    "@market-sentinel/risk-engine": "workspace:*",
     "@market-sentinel/strategies": "workspace:*",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.44.5",

@@ -3,6 +3,13 @@ import { Decimal } from "decimal.js";
 import { STRATEGY_DEFAULTS } from "./defaults.js";
 import type { OpportunityScore, ScoreFactors, StrategyEvaluation, StrategySnapshot } from "./types.js";
 
+export type ScoreRiskInput = {
+  dailyLossHit?: boolean;
+  consecutiveLossHit?: boolean;
+  cooldownActive?: boolean;
+  newsBlackout?: boolean;
+};
+
 function clamp(args: { value: number; max: number }): number {
   if (args.value < 0) {
     return 0;
@@ -106,7 +113,11 @@ function rewardRiskPoints(args: { evaluation: StrategyEvaluation }): number {
   return 0;
 }
 
-export function scoreOpportunity(args: { snapshot: StrategySnapshot; evaluation: StrategyEvaluation }): OpportunityScore {
+export function scoreOpportunity(args: {
+  snapshot: StrategySnapshot;
+  evaluation: StrategyEvaluation;
+  risk?: ScoreRiskInput;
+}): OpportunityScore {
   const factors: ScoreFactors = {
     alignment4h: clamp({ value: alignment4h(args), max: 20 }),
     setup1h: clamp({ value: setup1h({ snapshot: args.snapshot }), max: 15 }),
@@ -114,7 +125,7 @@ export function scoreOpportunity(args: { snapshot: StrategySnapshot; evaluation:
     confirmation15m: clamp({ value: confirmation15m({ snapshot: args.snapshot }), max: 20 }),
     momentumVol: clamp({ value: momentumVol({ snapshot: args.snapshot }), max: 10 }),
     rewardRisk: clamp({ value: rewardRiskPoints({ evaluation: args.evaluation }), max: 10 }),
-    eventRisk: 5,
+    eventRisk: args.risk?.dailyLossHit || args.risk?.consecutiveLossHit || args.risk?.cooldownActive || args.risk?.newsBlackout ? 0 : 5,
   };
   const raw = Object.values(factors).reduce((sum, value) => sum + value, 0);
   const needsZones = args.evaluation.strategyKey !== "do-not-chase";
@@ -134,6 +145,14 @@ export function scoreOpportunity(args: { snapshot: StrategySnapshot; evaluation:
     blockedReason = "insufficient-data";
   } else if (rrBlocked) {
     blockedReason = "rr-below-minimum";
+  } else if (args.risk?.dailyLossHit) {
+    blockedReason = "daily-loss";
+  } else if (args.risk?.consecutiveLossHit) {
+    blockedReason = "consecutive-loss";
+  } else if (args.risk?.cooldownActive) {
+    blockedReason = "cooldown";
+  } else if (args.risk?.newsBlackout) {
+    blockedReason = "news-blackout";
   }
   const display = blockedReason ? 0 : raw;
   return {
@@ -143,8 +162,8 @@ export function scoreOpportunity(args: { snapshot: StrategySnapshot; evaluation:
     blockedReason,
     factors,
     evidence: {
-      stubUntil: "M6",
       hardFilters: ["daily-loss", "consecutive-loss", "cooldown", "news-blackout"],
+      risk: args.risk ?? null,
     },
   };
 }

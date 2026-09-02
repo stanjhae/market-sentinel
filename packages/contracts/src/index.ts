@@ -40,7 +40,122 @@ export const accountResponseSchema = z.object({
   availableCash: z.string().nullable(),
   invested: z.string().nullable(),
   unrealizedPnl: z.string().nullable(),
+  realizedDailyPnl: z.string().nullable(),
+  openPositionCount: z.number().int().nullable(),
+  historyUnavailable: z.boolean(),
   capturedAt: z.string().nullable(),
+});
+
+export const brokerPositionDtoSchema = z.object({
+  etoroPositionId: z.string(),
+  instrumentId: z.number().int(),
+  symbol: z.string().nullable(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+  openedAt: z.string().nullable(),
+  openPrice: z.string().nullable(),
+  units: z.string().nullable(),
+  investedAmount: z.string().nullable(),
+  leverage: z.string().nullable(),
+  stopLoss: z.string().nullable(),
+  takeProfit: z.string().nullable(),
+  unrealizedPnl: z.string().nullable(),
+  fees: z.string().nullable(),
+});
+
+export const brokerTradeDtoSchema = z.object({
+  etoroPositionId: z.string(),
+  instrumentId: z.number().int(),
+  symbol: z.string().nullable(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+  openedAt: z.string().nullable(),
+  closedAt: z.string().nullable(),
+  openPrice: z.string().nullable(),
+  closePrice: z.string().nullable(),
+  units: z.string().nullable(),
+  investedAmount: z.string().nullable(),
+  realizedPnl: z.string().nullable(),
+  fees: z.string().nullable(),
+  sourceAccount: z.enum(["REAL", "DEMO"]),
+});
+
+export const positionsResponseSchema = z.object({
+  available: z.boolean(),
+  positions: z.array(brokerPositionDtoSchema),
+});
+
+export const historyResponseSchema = z.object({
+  available: z.boolean(),
+  historyUnavailable: z.boolean(),
+  trades: z.array(brokerTradeDtoSchema),
+});
+
+export const riskProfileSchema = z.object({
+  maxRiskPerTradePct: z.number().positive().max(100),
+  maxDailyLossPct: z.number().positive().max(100),
+  maxConsecutiveLosses: z.number().int().min(1).max(20),
+  cooldownAfterLossMinutes: z.number().int().min(0).max(24 * 60),
+  minimumRewardRisk: z.number().positive().max(20),
+  maxConcurrentCorrelatedPositions: z.number().int().min(1).max(20),
+  prohibitRiskIncreaseAfterLoss: z.boolean(),
+  prohibitMartingale: z.boolean(),
+});
+
+export const psychologyChecklistSchema = z.object({
+  definedEntry: z.boolean(),
+  definedStop: z.boolean(),
+  minimumRr: z.boolean(),
+  notRecovering: z.boolean(),
+  notChasing: z.boolean(),
+  knowHtf: z.boolean(),
+  noBlackoutImminent: z.boolean(),
+  wouldStillTake: z.boolean(),
+});
+
+export const riskStatusSchema = z.object({
+  available: z.boolean(),
+  tradingStatus: z.enum(["ACTIVE", "COOLDOWN", "SESSION_BLOCKED", "NEWS_BLACKOUT"]),
+  equity: z.string().nullable(),
+  dailyPnl: z.string().nullable(),
+  riskRemainingUsd: z.string().nullable(),
+  consecutiveLosses: z.number().int(),
+  cooldownUntil: z.string().nullable(),
+  newsBlackout: z.boolean(),
+  historyUnavailable: z.boolean(),
+  lastSyncAt: z.string().nullable(),
+  lastSyncLatencyMs: z.number().int().nullable(),
+  syncErrorCount: z.number().int(),
+  profile: riskProfileSchema,
+});
+
+export const riskEvaluationSchema = z.object({
+  allowed: z.boolean(),
+  blockReasons: z.array(z.string()),
+  tradingStatus: riskStatusSchema.shape.tradingStatus,
+  maxLossUsd: z.string().nullable(),
+  maxRiskPct: z.string(),
+  positionSizeUsd: z.string().nullable(),
+  minTarget: z.string().nullable(),
+  expectedR: z.string().nullable(),
+  dailyPnl: z.string(),
+  consecutiveLosses: z.number().int(),
+  cooldownUntil: z.string().nullable(),
+  newsBlackout: z.boolean(),
+});
+
+export const economicEventDtoSchema = z.object({
+  id: z.string(),
+  eventName: z.string(),
+  currency: z.string(),
+  impact: z.enum(["LOW", "MEDIUM", "HIGH"]),
+  scheduledAtUtc: z.string(),
+  blackoutBeforeMinutes: z.number().int(),
+  blackoutAfterMinutes: z.number().int(),
+});
+
+export const eventsResponseSchema = z.object({
+  available: z.boolean(),
+  newsBlackout: z.boolean(),
+  events: z.array(economicEventDtoSchema),
 });
 
 export const candleDtoSchema = z.object({
@@ -221,8 +336,13 @@ export const signalDetailResponseSchema = z.object({
 });
 
 export const createPlanResponseSchema = z.object({
-  status: z.literal("STUB"),
+  status: z.enum(["APPROVED", "BLOCKED", "REJECTED", "PENDING_CHECKLIST"]),
   signalId: z.string(),
+  planId: z.string().nullable(),
+  allowed: z.boolean(),
+  blockReasons: z.array(z.string()),
+  missingChecklist: z.array(z.string()),
+  evaluation: riskEvaluationSchema.nullable(),
 });
 
 export const healthLiveSchema = z.object({
@@ -293,7 +413,7 @@ export const settingsResponseSchema = z.object({
   available: z.boolean(),
   telegramConfigured: z.boolean(),
   alerts: alertSettingsSchema,
-  risk: z.record(z.unknown()),
+  risk: riskProfileSchema,
   markets: z.record(z.unknown()),
 });
 
@@ -326,17 +446,27 @@ export const sseEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("account"),
-    payload: z.object({}).optional(),
+    payload: accountResponseSchema.partial().optional(),
   }),
   z.object({
     type: z.literal("risk"),
-    payload: z.object({}).optional(),
+    payload: riskStatusSchema.partial().optional(),
   }),
 ]);
 
 export type MarketQuote = z.infer<typeof marketQuoteSchema>;
 export type MarketsResponse = z.infer<typeof marketsResponseSchema>;
 export type AccountResponse = z.infer<typeof accountResponseSchema>;
+export type BrokerPositionDto = z.infer<typeof brokerPositionDtoSchema>;
+export type BrokerTradeDto = z.infer<typeof brokerTradeDtoSchema>;
+export type PositionsResponse = z.infer<typeof positionsResponseSchema>;
+export type HistoryResponse = z.infer<typeof historyResponseSchema>;
+export type RiskProfileDto = z.infer<typeof riskProfileSchema>;
+export type RiskStatus = z.infer<typeof riskStatusSchema>;
+export type RiskEvaluationDto = z.infer<typeof riskEvaluationSchema>;
+export type PsychologyChecklistDto = z.infer<typeof psychologyChecklistSchema>;
+export type EconomicEventDto = z.infer<typeof economicEventDtoSchema>;
+export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 export type HealthReady = z.infer<typeof healthReadySchema>;
 export type SseEvent = z.infer<typeof sseEventSchema>;
 export type CandleDto = z.infer<typeof candleDtoSchema>;
