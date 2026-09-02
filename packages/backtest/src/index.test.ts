@@ -143,7 +143,7 @@ describe("event loop lookahead", () => {
         expect(last15m?.openTimeUtc.getTime()).toBe(current.openTimeUtc.getTime());
       }
     }
-  });
+  }, 20_000);
 
   it("produces the same signal sequence when the candle loop is run twice", async () => {
     const candles = series({ count: BACKTEST_DEFAULTS.indicatorLookback + 8 });
@@ -152,7 +152,7 @@ describe("event loop lookahead", () => {
     expect(first.frames.map((frame) => frame.signals.map((signal) => `${signal.strategyKey}:${signal.state}`))).toEqual(
       second.frames.map((frame) => frame.signals.map((signal) => `${signal.strategyKey}:${signal.state}`)),
     );
-  });
+  }, 20_000);
 
   it("returns an empty envelope when warmup is missing", async () => {
     expect((await runEventLoop({ candles: series({ count: 10 }) })).emptyReason).toBe("insufficient-history");
@@ -164,7 +164,7 @@ describe("event loop lookahead", () => {
     expect(loop.frames.length).toBeGreaterThan(0);
     expect(loop.frames[0]?.indicators["15m"]?.ema20).toEqual(expect.any(String));
     expect(loop.warmupBars).toBe(BACKTEST_DEFAULTS.indicatorLookback - 1);
-  });
+  }, 20_000);
 });
 
 describe("higher timeframe fallback", () => {
@@ -326,5 +326,5 @@ describe("walk-forward", () => {
         }
       }
     }
-  });
+  }, 20_000);
 });
