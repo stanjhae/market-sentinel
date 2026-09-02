@@ -141,11 +141,24 @@ function toStrategyIndicators(args: { values: IndicatorValues | null; previousRs
   };
 }
 
+export type HigherTfCache = Partial<
+  Record<
+    Exclude<Timeframe, "15m">,
+    {
+      closeKey: number;
+      zones: PriceZone[];
+      regime: MarketRegime | null;
+      values: IndicatorValues | null;
+    }
+  >
+>;
+
 export function buildSnapshotFromPrefix(args: {
   bars15m: InputCandle[];
   higher?: Partial<Record<Timeframe, InputCandle[]>>;
   previousRsi14?: string | null;
   previousStructure1h?: StructureLabel | null;
+  higherCache?: HigherTfCache;
 }): { snapshot: StrategySnapshot; indicatorValues: Partial<Record<Timeframe, IndicatorValues>> } | null {
   const finals = args.bars15m.filter((bar) => bar.isFinal);
   const last = finals[finals.length - 1];
@@ -165,6 +178,23 @@ export function buildSnapshotFromPrefix(args: {
   const lastBars: StrategySnapshot["lastBars"] = {};
   let indicators15m: IndicatorValues | null = null;
   for (const timeframe of TIMEFRAMES) {
+    const closeKey = byTf[timeframe][byTf[timeframe].length - 1]?.closeTimeUtc.getTime() ?? 0;
+    const cached = timeframe === "15m" ? undefined : args.higherCache?.[timeframe];
+    if (cached && cached.closeKey === closeKey) {
+      const thisTf = cached.zones.filter((zone) => zone.timeframe === timeframe);
+      const otherTf = zones.filter((zone) => zone.timeframe !== timeframe);
+      zones = [...otherTf, ...thisTf];
+      regimes[timeframe] = cached.regime;
+      if (cached.values) {
+        indicatorValues[timeframe] = cached.values;
+      }
+      indicators[timeframe] = toStrategyIndicators({
+        values: cached.values,
+        previousRsi: null,
+      });
+      lastBars[timeframe] = lookback({ candles: byTf[timeframe], limit: 8 }).map((candle) => toStructureBar({ candle }));
+      continue;
+    }
     const structured = structureForTimeframe({
       bars: byTf[timeframe],
       existing: zones,
@@ -184,6 +214,14 @@ export function buildSnapshotFromPrefix(args: {
       previousRsi: timeframe === "15m" ? (args.previousRsi14 ?? null) : null,
     });
     lastBars[timeframe] = lookback({ candles: byTf[timeframe], limit: 8 }).map((candle) => toStructureBar({ candle }));
+    if (timeframe !== "15m" && args.higherCache) {
+      args.higherCache[timeframe] = {
+        closeKey,
+        zones: structured.zones.filter((zone) => zone.timeframe === timeframe),
+        regime: structured.regime,
+        values,
+      };
+    }
   }
   const last1h = byTf["1h"][byTf["1h"].length - 1] ?? null;
   return {

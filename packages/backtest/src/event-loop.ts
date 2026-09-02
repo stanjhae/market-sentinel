@@ -6,7 +6,7 @@ import {
   evaluateAllStrategies,
   type SignalRecord,
 } from "@market-sentinel/strategies";
-import { buildSnapshotFromPrefix } from "./structure.js";
+import { buildSnapshotFromPrefix, type HigherTfCache } from "./structure.js";
 import { barsElapsed15m, signalKey } from "./sequence.js";
 import type { EventLoopResult, InputCandle, ReplayFrame } from "./types.js";
 
@@ -29,6 +29,8 @@ export async function runEventLoop(args: {
   idFactory?: () => string;
   signalFromIndex?: number;
   yieldEvery?: number;
+  keepSnapshots?: boolean;
+  skipWarmupStructure?: boolean;
 }): Promise<EventLoopResult> {
   const bars15m = selectFinal15m({ candles: args.candles });
   if (bars15m.length === 0) {
@@ -56,7 +58,10 @@ export async function runEventLoop(args: {
   const frames: ReplayFrame[] = [];
   const snapshots = [];
   const open = new Map<string, SignalRecord>();
-  const all: SignalRecord[] = [];
+  const byId = new Map<string, SignalRecord>();
+  const keepSnapshots = args.keepSnapshots ?? true;
+  const skipWarmupStructure = args.skipWarmupStructure ?? false;
+  const higherCache: HigherTfCache = {};
   let previousRsi14: string | null = null;
   let previousStructure1h: StructureLabel | null = null;
   let seq = 0;
@@ -70,11 +75,19 @@ export async function runEventLoop(args: {
   const yieldEvery = args.yieldEvery ?? 0;
   for (let index = 0; index < bars15m.length; index += 1) {
     const prefix = bars15m.slice(0, index + 1);
+    const evaluateSignals = index >= warmupBars;
+    if (skipWarmupStructure && !evaluateSignals && index < warmupBars - 1) {
+      if (yieldEvery > 0 && index > 0 && index % yieldEvery === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      continue;
+    }
     const built = buildSnapshotFromPrefix({
       bars15m: prefix,
       higher: args.higher,
       previousRsi14,
       previousStructure1h,
+      higherCache,
     });
     if (!built) {
       continue;
@@ -82,8 +95,9 @@ export async function runEventLoop(args: {
     const snapshot = built.snapshot;
     previousRsi14 = snapshot.indicators["15m"]?.rsi14 ?? previousRsi14;
     previousStructure1h = snapshot.regimes["1h"]?.structure ?? previousStructure1h;
-    snapshots.push(snapshot);
-    const evaluateSignals = index >= warmupBars;
+    if (keepSnapshots) {
+      snapshots.push(snapshot);
+    }
     if (evaluateSignals) {
       const evaluations = evaluateAllStrategies({ snapshot });
       const processed = new Set<string>();
@@ -109,12 +123,7 @@ export async function runEventLoop(args: {
         } else {
           open.set(key, result.next);
         }
-        const existing = all.findIndex((signal) => signal.id === result.next!.id);
-        if (existing >= 0) {
-          all[existing] = result.next;
-        } else {
-          all.push(result.next);
-        }
+        byId.set(result.next.id, result.next);
       }
       for (const [key, current] of open) {
         if (processed.has(key)) {
@@ -145,10 +154,7 @@ export async function runEventLoop(args: {
         } else {
           open.set(key, result.next);
         }
-        const existing = all.findIndex((signal) => signal.id === result.next!.id);
-        if (existing >= 0) {
-          all[existing] = result.next;
-        }
+        byId.set(result.next.id, result.next);
       }
       frames.push({
         index: frames.length,
@@ -158,7 +164,7 @@ export async function runEventLoop(args: {
         lastFinalClose: snapshot.lastFinalClose,
         signals: [
           ...open.values(),
-          ...all.filter(
+          ...[...byId.values()].filter(
             (signal) =>
               isTerminalSignalState({ state: signal.state }) &&
               signal.lastEvaluatedOpenTimeUtc.getTime() === snapshot.lastFinalOpenTimeUtc.getTime(),
@@ -173,7 +179,7 @@ export async function runEventLoop(args: {
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
-  return { frames, signals: all, snapshots, emptyReason: null, warmupBars };
+  return { frames, signals: [...byId.values()], snapshots, emptyReason: null, warmupBars };
 }
 
 export function prefixHasNoFuture(args: {

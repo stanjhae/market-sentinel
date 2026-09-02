@@ -423,6 +423,8 @@ export async function createBacktestRun(args: {
     symbol: args.body.symbol,
     signalFromIndex: signalFromIndex < 0 ? 0 : signalFromIndex,
     yieldEvery: BACKTEST_DEFAULTS.yieldEveryBars,
+    keepSnapshots: false,
+    skipWarmupStructure: true,
   });
   if (loop.emptyReason) {
     return persistEmpty({ emptyReason: loop.emptyReason });

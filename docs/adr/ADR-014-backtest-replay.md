@@ -41,7 +41,7 @@ Warmup bars before a window start may build indicators/structure; signals and fi
 
 The API loads `structureLookback` (500) 15m intervals before the requested `from`. Signals and fills start at `max(first in-range bar, indicatorLookback - 1)`. Missing pre-range history is not invented; evaluation waits until 228 finalized 15m bars exist in the prefix.
 
-Empty `1h` / `4h` arrays are treated as missing. The snapshot then aggregates those timeframes from finalized 15m prefixes (`higherPrefix`).
+Empty `1h` / `4h` arrays are treated as missing. The snapshot then aggregates those timeframes from finalized 15m prefixes (`higherPrefix`). Higher-timeframe structure and indicators are reused until that timeframe prints a new final close — matching live (1h regime does not rebuild on every 15m bar). API runs skip full structure during indicator warmup and do not retain per-bar snapshots in memory.
 
 ### Jobs and replay paper-trade
 
