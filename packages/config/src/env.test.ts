@@ -29,6 +29,13 @@ describe("parseEnv", () => {
     expect("NEXT_PUBLIC_ETORO_API_KEY" in env).toBe(false);
   });
 
+  it("keeps Demo execution disabled unless explicitly true", () => {
+    expect(parseEnv(validBase).DEMO_EXECUTION_ENABLED).toBe(false);
+    expect(parseEnv({ ...validBase, DEMO_EXECUTION_ENABLED: "false" }).DEMO_EXECUTION_ENABLED).toBe(false);
+    expect(parseEnv({ ...validBase, DEMO_EXECUTION_ENABLED: "true" }).DEMO_EXECUTION_ENABLED).toBe(true);
+    expect("NEXT_PUBLIC_DEMO_EXECUTION_ENABLED" in parseEnv(validBase)).toBe(false);
+  });
+
   it("rejects APP_PASSWORD shorter than 12 characters", () => {
     expect(() => parseEnv({ ...validBase, APP_PASSWORD: "short" })).toThrow();
     expect(parseEnv({ ...validBase, APP_PASSWORD: "correct-horse" }).APP_PASSWORD).toBe("correct-horse");

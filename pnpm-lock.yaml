@@ -59,6 +59,9 @@ importers:
       '@market-sentinel/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@market-sentinel/etoro-client':
+        specifier: workspace:*
+        version: link:../../packages/etoro-client
       '@market-sentinel/journal':
         specifier: workspace:*
         version: link:../../packages/journal

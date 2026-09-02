@@ -8,6 +8,7 @@ describe("secret boundary", () => {
     expect(envExample).not.toMatch(/NEXT_PUBLIC_ETORO_/);
     expect(envExample).not.toMatch(/NEXT_PUBLIC_TELEGRAM_/);
     expect(envExample).not.toMatch(/NEXT_PUBLIC_APP_PASSWORD/);
+    expect(envExample).not.toMatch(/NEXT_PUBLIC_DEMO_EXECUTION_ENABLED/);
     expect(process.env.NEXT_PUBLIC_ETORO_API_KEY).toBeUndefined();
     expect(process.env.NEXT_PUBLIC_ETORO_USER_KEY).toBeUndefined();
     expect(process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN).toBeUndefined();

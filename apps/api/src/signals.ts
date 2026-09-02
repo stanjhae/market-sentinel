@@ -283,6 +283,12 @@ export async function createApprovedPlan(args: {
     })
     .where(eq(signals.id, args.id));
   await cacheSignalSummary({ db: args.db, redis: args.redis, symbol: row.symbol, instrumentId: row.instrumentId });
+  await args.db.insert(auditLogs).values({
+    id: randomUUID(),
+    eventType: "PLAN_APPROVED",
+    instrumentId: row.instrumentId,
+    payloadJson: { signalId: row.id, planId },
+  });
   return {
     status: "APPROVED",
     signalId: row.id,

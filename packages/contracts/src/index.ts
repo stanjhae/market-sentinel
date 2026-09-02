@@ -366,6 +366,42 @@ export const authSessionSchema = z.object({
   authenticated: z.boolean(),
 });
 
+export const executionStatusSchema = z.object({
+  allowed: z.boolean(),
+  accountType: z.enum(["real", "demo"]),
+  enabled: z.boolean(),
+  blockReasons: z.array(z.string()),
+});
+
+export const executionCostDtoSchema = z.object({
+  costType: z.string(),
+  amount: z.string(),
+  currency: z.string(),
+});
+
+export const executionPreviewSchema = z.object({
+  allowed: z.boolean(),
+  blockReasons: z.array(z.string()),
+  nonce: z.string().nullable(),
+  requestId: z.string().nullable(),
+  action: z.enum(["open", "close"]),
+  amount: z.string().nullable(),
+  instrumentId: z.number().int().nullable(),
+  leverage: z.literal(1),
+  stopLoss: z.string().nullable(),
+  takeProfit: z.string().nullable(),
+  costs: z.array(executionCostDtoSchema),
+  evaluation: riskEvaluationSchema.nullable(),
+});
+
+export const executionConfirmSchema = z.object({
+  status: z.enum(["FILLED", "REJECTED", "AMBIGUOUS", "BLOCKED"]),
+  orderId: z.string().nullable(),
+  etoroOrderId: z.string().nullable(),
+  referenceId: z.string().nullable(),
+  blockReasons: z.array(z.string()),
+});
+
 export const alertTypeSchema = z.enum([
   "WATCHLIST_OPPORTUNITY",
   "ENTRY_CONFIRMATION",
@@ -760,6 +796,9 @@ export type EconomicEventDto = z.infer<typeof economicEventDtoSchema>;
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 export type HealthReady = z.infer<typeof healthReadySchema>;
 export type AuthSession = z.infer<typeof authSessionSchema>;
+export type ExecutionStatus = z.infer<typeof executionStatusSchema>;
+export type ExecutionPreview = z.infer<typeof executionPreviewSchema>;
+export type ExecutionConfirm = z.infer<typeof executionConfirmSchema>;
 export type SseEvent = z.infer<typeof sseEventSchema>;
 export type CandleDto = z.infer<typeof candleDtoSchema>;
 export type IndicatorSnapshotDto = z.infer<typeof indicatorSnapshotDtoSchema>;

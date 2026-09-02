@@ -1,6 +1,7 @@
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { hasEtoroCredentials, hasTelegramCredentials, type Env } from "@market-sentinel/config";
+import { EtoroDemoExecutionClient } from "@market-sentinel/etoro-client";
 import { psychologyChecklistSchema, REDIS_KEYS, sseEventSchema } from "@market-sentinel/contracts";
 import { createDb } from "@market-sentinel/db";
 import { parseEventTimeUtc, parseWatchlistSymbol, RISK_DEFAULTS } from "@market-sentinel/domain";
@@ -59,6 +60,13 @@ import {
   readAnalyticsSummary,
 } from "./analytics.js";
 import {
+  confirmClose,
+  confirmOpen,
+  executionStatusFromEnv,
+  previewClose,
+  previewOpen,
+} from "./execution.js";
+import {
   addPaperTrade,
   createBacktestRun,
   emptyBacktestRun,
@@ -72,7 +80,7 @@ import {
   readReplayFrame,
 } from "./backtest.js";
 
-export async function buildServer(args: { env?: Partial<Env> } = {}) {
+export async function buildServer(args: { env?: Partial<Env>; executionClient?: EtoroDemoExecutionClient | null } = {}) {
   const loaded = loadApiEnv();
   const env = {
     ...loaded,
@@ -114,6 +122,28 @@ export async function buildServer(args: { env?: Partial<Env> } = {}) {
     // Connection failures are reflected in /health/ready and /markets.
   });
   const dbPair = createDb(env.DATABASE_URL);
+  const executionClient =
+    args.executionClient !== undefined
+      ? args.executionClient
+      : hasEtoroCredentials(env) && env.ETORO_API_KEY && env.ETORO_USER_KEY
+        ? new EtoroDemoExecutionClient(
+            {
+              apiKey: env.ETORO_API_KEY,
+              userKey: env.ETORO_USER_KEY,
+              accountType: env.ETORO_ACCOUNT_TYPE,
+              restBaseUrl: env.ETORO_REST_BASE_URL,
+              wsUrl: env.ETORO_WS_URL,
+            },
+            { enabled: env.DEMO_EXECUTION_ENABLED },
+          )
+        : null;
+  const executionDeps = () => ({
+    db: dbPair.db,
+    redis,
+    env,
+    client: executionClient,
+    pnlWaitMs: process.env.NODE_ENV === "test" ? 0 : 10_000,
+  });
 
   const pingDatabase = async () => {
     try {
@@ -534,6 +564,58 @@ export async function buildServer(args: { env?: Partial<Env> } = {}) {
       return reply.code(409).send(result);
     }
     return result;
+  });
+
+  app.get("/execution/status", async () => executionStatusFromEnv({ env }));
+
+  app.post("/execution/preview", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const body = (request.body ?? {}) as { planId?: unknown; signalId?: unknown };
+    const planId = typeof body.planId === "string" ? body.planId : undefined;
+    const signalId = typeof body.signalId === "string" ? body.signalId : undefined;
+    if (!planId && !signalId) {
+      return reply.code(400).send({ error: "planId or signalId required" });
+    }
+    const result = await previewOpen({ ...executionDeps(), planId, signalId });
+    return reply.code(result.http).send(result.body);
+  });
+
+  app.post("/execution/confirm", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const body = (request.body ?? {}) as { nonce?: unknown };
+    if (typeof body.nonce !== "string" || body.nonce.length === 0) {
+      return reply.code(409).send({ error: "invalid preview nonce" });
+    }
+    const result = await confirmOpen({ ...executionDeps(), nonce: body.nonce });
+    return reply.code(result.http).send(result.body);
+  });
+
+  app.post("/execution/close/preview", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const body = (request.body ?? {}) as { positionId?: unknown };
+    if (typeof body.positionId !== "string" || body.positionId.length === 0) {
+      return reply.code(400).send({ error: "positionId required" });
+    }
+    const result = await previewClose({ ...executionDeps(), positionId: body.positionId });
+    return reply.code(result.http).send(result.body);
+  });
+
+  app.post("/execution/close/confirm", async (request, reply) => {
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    const body = (request.body ?? {}) as { nonce?: unknown };
+    if (typeof body.nonce !== "string" || body.nonce.length === 0) {
+      return reply.code(409).send({ error: "invalid preview nonce" });
+    }
+    const result = await confirmClose({ ...executionDeps(), nonce: body.nonce });
+    return reply.code(result.http).send(result.body);
   });
 
   app.get("/account", async () => {

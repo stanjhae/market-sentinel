@@ -16,3 +16,10 @@ export function shouldRetry(args: { method: string; status?: number; attempt: nu
   }
   return args.status === 429 || args.status >= 500;
 }
+
+export function shouldRetryExecutionPost(args: { status?: number; attempt: number; maxAttempts: number }): boolean {
+  if (args.attempt >= args.maxAttempts) {
+    return false;
+  }
+  return args.status === 429;
+}

@@ -57,6 +57,20 @@
       "when": 1756810000000,
       "tag": "0007_backtest",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1756820000000,
+      "tag": "0008_broker_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1756830000000,
+      "tag": "0009_broker_orders_active_unique",
+      "breakpoints": true
     }
   ]
 }

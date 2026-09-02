@@ -362,6 +362,34 @@ export const journalEntries = pgTable(
   ],
 );
 
+export const brokerOrders = pgTable(
+  "broker_orders",
+  {
+    id: text("id").primaryKey(),
+    tradePlanId: text("trade_plan_id"),
+    action: text("action").notNull(),
+    status: text("status").notNull(),
+    etoroOrderId: text("etoro_order_id"),
+    referenceId: text("reference_id").notNull(),
+    instrumentId: integer("instrument_id").notNull(),
+    amount: text("amount"),
+    positionId: text("position_id"),
+    rawRequestJson: jsonb("raw_request_json"),
+    rawResponseJson: jsonb("raw_response_json"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("broker_orders_reference_idx").on(table.referenceId),
+    uniqueIndex("broker_orders_active_open_plan_idx")
+      .on(table.tradePlanId)
+      .where(sql`${table.action} = 'open' and ${table.status} in ('PENDING', 'FILLED', 'AMBIGUOUS') and ${table.tradePlanId} is not null`),
+    uniqueIndex("broker_orders_active_close_position_idx")
+      .on(table.positionId)
+      .where(sql`${table.action} = 'close' and ${table.status} in ('PENDING', 'FILLED', 'AMBIGUOUS') and ${table.positionId} is not null`),
+  ],
+);
+
 export const backtestRuns = pgTable("backtest_runs", {
   id: text("id").primaryKey(),
   kind: text("kind").notNull(),
