@@ -201,6 +201,26 @@ export const JOURNAL_DEFAULTS = {
   screenshotMaxBytes: 5 * 1024 * 1024,
 } as const;
 
+export const BACKTEST_DEFAULTS = {
+  indicatorLookback: 228,
+  structureLookback: 500,
+  slippage: "0",
+  spread: "0",
+  feeBps: "0",
+  units: "1",
+  inSampleRatio: 0.7,
+  rollingInSampleDays: 90,
+  rollingOutSampleDays: 30,
+  rollingStepDays: 30,
+  rollingMinRangeDays: 180,
+  yieldEveryBars: 32,
+} as const;
+
+export type BacktestKind = "backtest" | "replay";
+export type WalkForwardMode = "none" | "split" | "rolling";
+export type SimulatedFillStatus = "filled" | "closed" | "open" | "unfillable";
+export type UnfillableReason = "gap";
+
 export function isJournalMatchStatus(args: { value: string }): args is { value: JournalMatchStatus } {
   return args.value === "LINKED" || args.value === "UNMATCHED" || args.value === "UNGATED";
 }

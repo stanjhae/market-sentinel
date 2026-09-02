@@ -50,6 +50,13 @@
       "when": 1756800000000,
       "tag": "0006_journal",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1756810000000,
+      "tag": "0007_backtest",
+      "breakpoints": true
     }
   ]
 }

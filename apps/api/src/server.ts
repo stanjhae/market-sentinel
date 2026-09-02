@@ -41,6 +41,19 @@ import {
   readAnalyticsSetups,
   readAnalyticsSummary,
 } from "./analytics.js";
+import {
+  addPaperTrade,
+  createBacktestRun,
+  emptyBacktestRun,
+  emptyBacktestTrades,
+  emptyReplayFrame,
+  parseCreateBacktest,
+  parseCreateReplay,
+  parsePaperTrade,
+  readBacktestRun,
+  readBacktestTrades,
+  readReplayFrame,
+} from "./backtest.js";
 
 export async function buildServer() {
   const env = loadApiEnv();
@@ -696,6 +709,110 @@ export async function buildServer() {
       return await readAnalyticsPsychology({ db: dbPair.db });
     } catch {
       return { available: false, empty: true, psychology: null };
+    }
+  });
+
+  app.post("/backtests", async (request, reply) => {
+    const body = parseCreateBacktest({ body: request.body });
+    if (!body.ok) {
+      return reply.code(400).send({ error: "invalid backtest request" });
+    }
+    if (!(await pingDatabase())) {
+      return reply.code(503).send(emptyBacktestRun());
+    }
+    try {
+      return await createBacktestRun({ db: dbPair.db, body: body.value, kind: "backtest" });
+    } catch {
+      return reply.code(503).send(emptyBacktestRun());
+    }
+  });
+
+  app.get("/backtests/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return emptyBacktestRun();
+    }
+    try {
+      const result = await readBacktestRun({ db: dbPair.db, id: params.id });
+      if (!result.run) {
+        return reply.code(404).send(emptyBacktestRun());
+      }
+      return result;
+    } catch {
+      return emptyBacktestRun();
+    }
+  });
+
+  app.get("/backtests/:id/trades", async (request) => {
+    const params = request.params as { id: string };
+    if (!(await pingDatabase())) {
+      return emptyBacktestTrades();
+    }
+    try {
+      return await readBacktestTrades({ db: dbPair.db, id: params.id });
+    } catch {
+      return emptyBacktestTrades();
+    }
+  });
+
+  app.post("/replay/sessions", async (request, reply) => {
+    const body = parseCreateReplay({ body: request.body });
+    if (!body.ok) {
+      return reply.code(400).send({ error: "invalid replay request" });
+    }
+    if (!(await pingDatabase())) {
+      return reply.code(503).send(emptyBacktestRun());
+    }
+    try {
+      return await createBacktestRun({ db: dbPair.db, body: body.value, kind: "replay" });
+    } catch {
+      return reply.code(503).send(emptyBacktestRun());
+    }
+  });
+
+  app.get("/replay/sessions/:id/frame", async (request, reply) => {
+    const params = request.params as { id: string };
+    const query = request.query as { index?: string; timeframe?: string };
+    const timeframe = parseTimeframeQuery({ value: query.timeframe });
+    if (!timeframe) {
+      return reply.code(400).send({ error: "invalid timeframe" });
+    }
+    const index = Number(query.index ?? "0");
+    if (!Number.isInteger(index) || index < 0) {
+      return reply.code(400).send({ error: "invalid index" });
+    }
+    if (!(await pingDatabase())) {
+      return emptyReplayFrame({ sessionId: params.id, timeframe });
+    }
+    try {
+      return await readReplayFrame({ db: dbPair.db, id: params.id, index, timeframe });
+    } catch {
+      return emptyReplayFrame({ sessionId: params.id, timeframe });
+    }
+  });
+
+  app.post("/replay/sessions/:id/paper-trade", async (request, reply) => {
+    const params = request.params as { id: string };
+    const query = request.query as { index?: string };
+    const body = parsePaperTrade({ body: request.body });
+    if (!body.ok) {
+      return reply.code(400).send({ error: "invalid paper trade" });
+    }
+    const index = Number(query.index ?? "0");
+    if (!Number.isInteger(index) || index < 0) {
+      return reply.code(400).send({ error: "invalid index" });
+    }
+    if (!(await pingDatabase())) {
+      return reply.code(503).send({ error: "database unavailable" });
+    }
+    try {
+      const result = await addPaperTrade({ db: dbPair.db, id: params.id, index, body: body.value });
+      if ("error" in result) {
+        return reply.code(404).send({ error: "session not found" });
+      }
+      return result;
+    } catch {
+      return reply.code(503).send({ error: "paper trade failed" });
     }
   });
 
