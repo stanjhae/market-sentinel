@@ -144,6 +144,22 @@ describe("api health and markets", () => {
     expect(traversal.statusCode).toBe(404);
     const badId = await app.inject({ method: "GET", url: "/journal/not-a-uuid/screenshot" });
     expect(badId.statusCode).toBe(404);
+    const backtest = await app.inject({
+      method: "POST",
+      url: "/backtests",
+      payload: { symbol: "US30" },
+    });
+    expect([200, 503]).toContain(backtest.statusCode);
+    if (backtest.statusCode === 200) {
+      const body = backtest.json();
+      expect(body.run === null || body.run.emptyReason === "no-final-candles" || typeof body.run.barCount === "number").toBe(true);
+    }
+    const replay = await app.inject({
+      method: "POST",
+      url: "/replay/sessions",
+      payload: { symbol: "BTC" },
+    });
+    expect(replay.statusCode).toBe(400);
     const missingPlan = await app.inject({
       method: "PATCH",
       url: "/journal/00000000-0000-4000-8000-000000000000",

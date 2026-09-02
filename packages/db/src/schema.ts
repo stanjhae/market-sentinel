@@ -361,3 +361,18 @@ export const journalEntries = pgTable(
       .where(sql`${table.tradePlanId} is not null`),
   ],
 );
+
+export const backtestRuns = pgTable("backtest_runs", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  symbol: text("symbol").notNull(),
+  strategyKey: text("strategy_key"),
+  rangeFrom: timestamp("range_from", { withTimezone: true }),
+  rangeTo: timestamp("range_to", { withTimezone: true }),
+  costsJson: jsonb("costs_json"),
+  walkForwardMode: text("walk_forward_mode").notNull(),
+  status: text("status").notNull(),
+  emptyReason: text("empty_reason"),
+  resultJson: jsonb("result_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

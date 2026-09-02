@@ -89,5 +89,5 @@ Four versioned detectors ship in Milestone 4: `breakdown-retest@1.0.0`, `sweep-r
 5. Alerts — in-app inbox, optional Telegram, event-driven SSE
 6. Account / risk / Trade Gate — official PnL snapshot, positions/history, risk engine, manual news blackouts
 7. Journal and analytics — broker matching, MAE/MFE, gated vs ungated
-8. Backtest / replay
+8. Backtest / replay — event loop, walk-forward, lookahead-free Replay UI
 9. Demo execution only

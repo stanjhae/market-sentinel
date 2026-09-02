@@ -573,6 +573,136 @@ export const analyticsPsychologyResponseSchema = z.object({
     .nullable(),
 });
 
+export const backtestCostsSchema = z.object({
+  slippage: z.string(),
+  spread: z.string(),
+  feeBps: z.string(),
+  units: z.string(),
+});
+
+export const createBacktestSchema = z.object({
+  symbol: z.enum(["US30", "US100", "SPX500", "GOLD"]),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  strategyKey: z.enum(["breakdown-retest", "sweep-reclaim", "trend-pullback", "do-not-chase"]).optional(),
+  walkForwardMode: z.enum(["none", "split", "rolling"]).optional(),
+  costs: backtestCostsSchema.partial().optional(),
+});
+
+export const createReplaySessionSchema = z.object({
+  symbol: z.enum(["US30", "US100", "SPX500", "GOLD"]),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+const finiteDecimalString = z.string().regex(/^-?\d+(\.\d+)?$/);
+
+export const paperTradeSchema = z.object({
+  direction: z.enum(["LONG", "SHORT"]),
+  stopLoss: finiteDecimalString,
+  target1: finiteDecimalString,
+});
+
+export const backtestTradeDtoSchema = z.object({
+  id: z.string(),
+  strategyKey: z.string(),
+  strategyVersion: z.string(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+  status: z.enum(["filled", "closed", "open", "unfillable"]),
+  unfillableReason: z.enum(["gap"]).nullable(),
+  openedAt: z.string().nullable(),
+  closedAt: z.string().nullable(),
+  entryPrice: z.string().nullable(),
+  exitPrice: z.string().nullable(),
+  realizedPnl: z.string().nullable(),
+  fees: z.string().nullable(),
+  resultR: z.string().nullable(),
+  maeUsd: z.string().nullable(),
+  mfeUsd: z.string().nullable(),
+  exitReason: z.string().nullable(),
+});
+
+export const backtestMetricsSchema = z.object({
+  empty: z.boolean(),
+  tradeCount: z.number().int(),
+  setupCount: z.number().int(),
+  winRate: z.string().nullable(),
+  expectancyR: z.string().nullable(),
+  profitFactor: z.string().nullable(),
+  maxDrawdown: z.string().nullable(),
+  averageR: z.string().nullable(),
+  averageMae: z.string().nullable(),
+  averageMfe: z.string().nullable(),
+  netPnl: z.string().nullable(),
+  timeInMarketBars: z.number().int(),
+  consecutiveWins: z.number().int(),
+  consecutiveLosses: z.number().int(),
+});
+
+export const walkForwardWindowDtoSchema = z.object({
+  kind: z.enum(["in-sample", "out-of-sample"]),
+  from: z.string(),
+  to: z.string(),
+  metrics: backtestMetricsSchema,
+});
+
+export const backtestRunDtoSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["backtest", "replay"]),
+  symbol: z.string(),
+  strategyKey: z.string().nullable(),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+  walkForwardMode: z.enum(["none", "split", "rolling"]),
+  status: z.enum(["completed", "empty", "error"]),
+  emptyReason: z.string().nullable(),
+  warmupBars: z.number().int(),
+  barCount: z.number().int(),
+  metrics: backtestMetricsSchema.nullable(),
+  windows: z.array(walkForwardWindowDtoSchema),
+  createdAt: z.string(),
+});
+
+export const backtestRunResponseSchema = z.object({
+  available: z.boolean(),
+  run: backtestRunDtoSchema.nullable(),
+});
+
+export const backtestTradesResponseSchema = z.object({
+  available: z.boolean(),
+  trades: z.array(backtestTradeDtoSchema),
+});
+
+export const replaySignalDtoSchema = z.object({
+  id: z.string(),
+  strategyKey: z.string(),
+  strategyVersion: z.string(),
+  direction: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+  state: z.string(),
+  score: z.number().int(),
+  confirmedAt: z.string().nullable(),
+  entryZoneLow: z.string().nullable(),
+  entryZoneHigh: z.string().nullable(),
+  invalidationPrice: z.string().nullable(),
+  target1: z.string().nullable(),
+});
+
+export const replayFrameResponseSchema = z.object({
+  available: z.boolean(),
+  empty: z.boolean(),
+  emptyReason: z.string().nullable(),
+  sessionId: z.string(),
+  index: z.number().int(),
+  barCount: z.number().int(),
+  timeframe: z.enum(["15m", "1h", "4h"]),
+  openTimeUtc: z.string().nullable(),
+  candles: z.array(candleDtoSchema),
+  zones: z.array(priceZoneDtoSchema),
+  indicators: indicatorSnapshotDtoSchema.nullable(),
+  signals: z.array(replaySignalDtoSchema),
+  paperTrades: z.array(backtestTradeDtoSchema),
+});
+
 export const sseEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("markets"),
@@ -649,3 +779,12 @@ export type AnalyticsSummaryResponse = z.infer<typeof analyticsSummaryResponseSc
 export type AnalyticsSetupsResponse = z.infer<typeof analyticsSetupsResponseSchema>;
 export type AnalyticsInstrumentsResponse = z.infer<typeof analyticsInstrumentsResponseSchema>;
 export type AnalyticsPsychologyResponse = z.infer<typeof analyticsPsychologyResponseSchema>;
+export type CreateBacktest = z.infer<typeof createBacktestSchema>;
+export type CreateReplaySession = z.infer<typeof createReplaySessionSchema>;
+export type PaperTradeRequest = z.infer<typeof paperTradeSchema>;
+export type BacktestTradeDto = z.infer<typeof backtestTradeDtoSchema>;
+export type BacktestMetricsDto = z.infer<typeof backtestMetricsSchema>;
+export type BacktestRunDto = z.infer<typeof backtestRunDtoSchema>;
+export type BacktestRunResponse = z.infer<typeof backtestRunResponseSchema>;
+export type BacktestTradesResponse = z.infer<typeof backtestTradesResponseSchema>;
+export type ReplayFrameResponse = z.infer<typeof replayFrameResponseSchema>;

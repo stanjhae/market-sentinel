@@ -44,6 +44,9 @@ importers:
       '@fastify/multipart':
         specifier: ^9.2.1
         version: 9.4.0
+      '@market-sentinel/backtest':
+        specifier: workspace:*
+        version: link:../../packages/backtest
       '@market-sentinel/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -200,6 +203,31 @@ importers:
       tsx:
         specifier: ^4.20.5
         version: 4.23.13
+
+  packages/backtest:
+    dependencies:
+      '@market-sentinel/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@market-sentinel/indicators':
+        specifier: workspace:*
+        version: link:../indicators
+      '@market-sentinel/journal':
+        specifier: workspace:*
+        version: link:../journal
+      '@market-sentinel/market-structure':
+        specifier: workspace:*
+        version: link:../market-structure
+      '@market-sentinel/strategies':
+        specifier: workspace:*
+        version: link:../strategies
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
+    devDependencies:
+      '@market-sentinel/test-fixtures':
+        specifier: workspace:*
+        version: link:../test-fixtures
 
   packages/config:
     dependencies:

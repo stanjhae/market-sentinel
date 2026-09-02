@@ -24,6 +24,7 @@ import {
   plannedEntryFromZone,
   parseJournalMatchStatus,
   trendAligned,
+  BACKTEST_DEFAULTS,
   type Trend,
   type ZoneSource,
 } from "./index.js";
@@ -51,6 +52,8 @@ describe("WATCHLIST", () => {
     expect(trendAligned({ direction: "LONG", primaryTrend: "STRONG_BULL" })).toBe(true);
     expect(trendAligned({ direction: "LONG", primaryTrend: "BEAR" })).toBe(false);
     expect(trendAligned({ direction: "SHORT", primaryTrend: "RANGE" })).toBeNull();
+    expect(BACKTEST_DEFAULTS.indicatorLookback).toBe(228);
+    expect(BACKTEST_DEFAULTS.inSampleRatio).toBe(0.7);
   });
 
   it("reserves Milestone 3 regime and zone enums", () => {

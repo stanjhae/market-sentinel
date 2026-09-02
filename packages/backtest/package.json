@@ -1,0 +1,25 @@
+{
+  "name": "@market-sentinel/backtest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@market-sentinel/domain": "workspace:*",
+    "@market-sentinel/indicators": "workspace:*",
+    "@market-sentinel/journal": "workspace:*",
+    "@market-sentinel/market-structure": "workspace:*",
+    "@market-sentinel/strategies": "workspace:*",
+    "decimal.js": "^10.6.0"
+  },
+  "devDependencies": {
+    "@market-sentinel/test-fixtures": "workspace:*"
+  }
+}
