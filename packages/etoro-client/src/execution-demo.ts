@@ -190,6 +190,107 @@ export function findPositionInPnl(args: { pnl: EtoroPnlResponse; positionId: str
   );
 }
 
+export type DemoOrderReconcileClient = {
+  lookupOrder: (args: { requestId: string; orderId?: number; referenceId?: string }) => Promise<DemoOrderLookup>;
+  getDemoPnl: (args: { requestId: string }) => Promise<EtoroPnlResponse>;
+  getCloseOrder: (args: { requestId: string; orderId: string }) => Promise<DemoCloseOrderResponse>;
+};
+
+export type DemoOrderReconcileResult = {
+  status: "FILLED" | "REJECTED" | "AMBIGUOUS";
+  etoroOrderId?: string;
+  positionId?: string;
+};
+
+export async function reconcileOpenOrder(args: {
+  client: DemoOrderReconcileClient;
+  requestId: string;
+  referenceId: string;
+  instrumentId: number;
+  etoroOrderId?: number;
+  sleep?: (ms: number) => Promise<void>;
+  pnlWaitMs?: number;
+}): Promise<DemoOrderReconcileResult> {
+  try {
+    const lookup = await args.client.lookupOrder({
+      requestId: createRequestId(),
+      orderId: args.etoroOrderId,
+      referenceId: args.etoroOrderId === undefined ? args.referenceId : undefined,
+    });
+    const classified = classifyLookupStatus({ statusId: lookup.status?.id });
+    if (classified === "FILLED") {
+      return {
+        status: "FILLED",
+        etoroOrderId:
+          lookup.orderId !== undefined
+            ? String(lookup.orderId)
+            : args.etoroOrderId !== undefined
+              ? String(args.etoroOrderId)
+              : undefined,
+        positionId:
+          lookup.positionExecutions?.[0]?.positionId !== undefined
+            ? String(lookup.positionExecutions[0].positionId)
+            : undefined,
+      };
+    }
+    if (classified === "REJECTED") {
+      return { status: "REJECTED", etoroOrderId: lookup.orderId !== undefined ? String(lookup.orderId) : undefined };
+    }
+  } catch {
+    // fall through to PnL
+  }
+  const wait = args.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  await wait(args.pnlWaitMs ?? 10_000);
+  try {
+    const pnl = await args.client.getDemoPnl({ requestId: createRequestId() });
+    const found = findOpenInPnl({ pnl, instrumentId: args.instrumentId, orderId: args.etoroOrderId });
+    if (found.found) {
+      return {
+        status: "FILLED",
+        etoroOrderId: found.orderId !== undefined ? String(found.orderId) : undefined,
+        positionId: found.positionId !== undefined ? String(found.positionId) : undefined,
+      };
+    }
+  } catch {
+    // still unknown
+  }
+  return { status: "AMBIGUOUS" };
+}
+
+export async function reconcileCloseOrder(args: {
+  client: DemoOrderReconcileClient;
+  positionId: string;
+  etoroOrderId?: string | null;
+  sleep?: (ms: number) => Promise<void>;
+  pnlWaitMs?: number;
+}): Promise<DemoOrderReconcileResult> {
+  if (args.etoroOrderId) {
+    try {
+      const closeInfo = await args.client.getCloseOrder({ requestId: createRequestId(), orderId: args.etoroOrderId });
+      const classified = classifyLookupStatus({ statusId: closeInfo.orderForClose?.statusID });
+      if (classified === "FILLED") {
+        return { status: "FILLED", etoroOrderId: args.etoroOrderId };
+      }
+      if (classified === "REJECTED") {
+        return { status: "REJECTED", etoroOrderId: args.etoroOrderId };
+      }
+    } catch {
+      // fall through to PnL
+    }
+  }
+  const wait = args.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  await wait(args.pnlWaitMs ?? 10_000);
+  try {
+    const pnl = await args.client.getDemoPnl({ requestId: createRequestId() });
+    if (!findPositionInPnl({ pnl, positionId: args.positionId })) {
+      return { status: "FILLED", etoroOrderId: args.etoroOrderId ?? undefined };
+    }
+  } catch {
+    // still unknown
+  }
+  return { status: "AMBIGUOUS", etoroOrderId: args.etoroOrderId ?? undefined };
+}
+
 export function buildDemoOpenBody(args: {
   direction: "LONG" | "SHORT";
   instrumentId: number;

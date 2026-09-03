@@ -10,6 +10,7 @@ import {
 } from "@market-sentinel/domain";
 import { CandleBuilder, tickPrice } from "@market-sentinel/domain/candle";
 import {
+  EtoroDemoExecutionClient,
   EtoroMarketStream,
   EtoroRestClient,
   resolveWatchlistInstrument,
@@ -33,6 +34,10 @@ import { syncAccountAndRisk } from "./account-store.js";
 import { updateOpenExcursions } from "./journal-store.js";
 import { evaluateSignals } from "./signal-store.js";
 import { evaluateStructure } from "./structure-store.js";
+import { runAccountSync } from "./jobs/account-sync.js";
+import { startDurableJobs } from "./jobs/bullmq.js";
+import { runCandleReconcile } from "./jobs/candle-reconcile.js";
+import { createDbExecutionReconcileStore, runExecutionReconcile } from "./jobs/execution-reconcile.js";
 
 const logger = createLogger("worker");
 
@@ -292,31 +297,21 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
     }
   };
 
-  const reconcile = async () => {
-    for (const instrument of instrumentsBySymbol.values()) {
-      try {
-        const revisions = await reconcileInstrument({
-          db: dbPair.db,
-          redis,
-          rest,
-          instrument,
-          telegram,
-        });
-        await evaluateSignals({
-          db: dbPair.db,
-          redis,
-          instrument,
-          staleAfterMs: env.STALE_TICK_MS,
-          telegram,
-        });
-        if (revisions > 0) {
-          logger.info({ symbol: instrument.symbol, revisions }, "REST candle reconcile revised finals");
-        }
-      } catch (error) {
-        logger.warn({ err: error, symbol: instrument.symbol }, "candle reconcile failed");
-      }
-    }
-  };
+  const demoClient =
+    env.ETORO_ACCOUNT_TYPE === "demo"
+      ? new EtoroDemoExecutionClient(
+          {
+            apiKey: env.ETORO_API_KEY,
+            userKey: env.ETORO_USER_KEY,
+            accountType: "demo",
+            restBaseUrl: env.ETORO_REST_BASE_URL,
+            wsUrl: env.ETORO_WS_URL,
+          },
+          { enabled: env.DEMO_EXECUTION_ENABLED },
+        )
+      : null;
+
+  let enqueueAccountSync: (args: { force: boolean }) => Promise<void> = async () => undefined;
 
   await redis.set(
     REDIS_KEYS.stream,
@@ -328,9 +323,6 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
   if (resolvedIds.length > 0) {
     stream.start(resolvedIds);
   }
-  const accountTimer = setInterval(() => {
-    void syncAccount();
-  }, 60_000);
   const forceTimer = setInterval(() => {
     void (async () => {
       const force = await redis.get(REDIS_KEYS.forceAccountSync);
@@ -341,15 +333,53 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
       await syncAccount({ force: true });
     })();
   }, 2_000);
-  const reconcileTimer = setInterval(() => {
-    void reconcile();
-  }, 120_000);
+  const durable = await startDurableJobs({
+    env,
+    redis,
+    handlers: {
+      candleReconcile: () =>
+        runCandleReconcile({
+          instruments: [...instrumentsBySymbol.values()],
+          reconcileOne: ({ instrument }) =>
+            reconcileInstrument({
+              db: dbPair.db,
+              redis,
+              rest,
+              instrument,
+              telegram,
+            }),
+          evaluateSignals: ({ instrument }) =>
+            evaluateSignals({
+              db: dbPair.db,
+              redis,
+              instrument,
+              staleAfterMs: env.STALE_TICK_MS,
+              telegram,
+            }),
+          onRevised: ({ symbol, revisions }) => {
+            logger.info({ symbol, revisions }, "REST candle reconcile revised finals");
+          },
+          onError: ({ symbol, error }) => {
+            logger.warn({ err: error, symbol }, "candle reconcile failed");
+          },
+        }),
+      accountSync: ({ force }) => runAccountSync({ force, sync: syncAccount }),
+      executionReconcile: async () => {
+        await runExecutionReconcile({
+          accountType: env.ETORO_ACCOUNT_TYPE,
+          client: demoClient,
+          store: createDbExecutionReconcileStore({ db: dbPair.db }),
+          enqueueAccountSync: (job) => enqueueAccountSync(job),
+        });
+      },
+    },
+  });
+  enqueueAccountSync = durable.enqueueAccountSync;
 
   return {
     stop: async () => {
-      clearInterval(accountTimer);
       clearInterval(forceTimer);
-      clearInterval(reconcileTimer);
+      await durable.stop();
       stream.stop();
       await dbPair.client.end({ timeout: 2 }).catch(() => undefined);
       redis.disconnect();

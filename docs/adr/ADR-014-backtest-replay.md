@@ -45,7 +45,7 @@ Empty `1h` / `4h` arrays are treated as missing. The snapshot then aggregates th
 
 ### Jobs and replay paper-trade
 
-Runs execute in-process on the API. BullMQ remains backlog #18. The event loop yields every `yieldEveryBars` (32) bars so `/health` and SSE can interleave.
+Runs execute in-process on the API. Scheduled worker jobs use BullMQ inside `apps/worker` (ADR-017); backtests are not queued. The event loop yields every `yieldEveryBars` (32) bars so `/health` and SSE can interleave.
 
 Replay paper trades are session-local. They are not journaled and are not sent to eToro. A fill at step N uses the same fill rules against bars `<= N`. Paper entry is the visible bar's open (including index 0). Stop/target must be finite decimal strings.
 

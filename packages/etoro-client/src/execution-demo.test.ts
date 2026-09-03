@@ -13,9 +13,12 @@ import {
   EtoroDemoExecutionClient,
   findOpenInPnl,
   findPositionInPnl,
+  reconcileCloseOrder,
+  reconcileOpenOrder,
+  type DemoOrderLookup,
 } from "./execution-demo.js";
 import { ETORO_ROUTES } from "./routes.js";
-import type { EtoroClientConfig } from "./types.js";
+import type { EtoroClientConfig, EtoroPnlResponse } from "./types.js";
 
 const config: EtoroClientConfig = {
   apiKey: "api-secret",
@@ -290,3 +293,84 @@ describe("EtoroDemoExecutionClient", () => {
 function createLookupId(): string {
   return "77777777-7777-4777-8777-777777777777";
 }
+
+describe("reconcileOpenOrder", () => {
+  it("classifies a filled lookup without placing another order", async () => {
+    let creates = 0;
+    const client = {
+      createOpenOrder: async () => {
+        creates += 1;
+        throw new Error("must not POST again");
+      },
+      lookupOrder: async (): Promise<DemoOrderLookup> => ({
+        orderId: 88,
+        status: { id: 3, name: "Filled" },
+        positionExecutions: [{ positionId: 9 }],
+      }),
+      getDemoPnl: async (): Promise<EtoroPnlResponse> => ({ clientPortfolio: { positions: [] } }),
+      getCloseOrder: async () => ({ orderForClose: { statusID: 1 } }),
+    };
+    const result = await reconcileOpenOrder({
+      client,
+      requestId: "11111111-1111-4111-8111-111111111111",
+      referenceId: "11111111-1111-4111-8111-111111111111",
+      instrumentId: 27,
+      sleep: async () => undefined,
+      pnlWaitMs: 0,
+    });
+    expect(result.status).toBe("FILLED");
+    expect(result.positionId).toBe("9");
+    expect(creates).toBe(0);
+  });
+
+  it("uses Demo PnL only when the same orderId is present", async () => {
+    const client = {
+      lookupOrder: async () => {
+        throw new DemoExecutionIsolationError("lookup missed");
+      },
+      getDemoPnl: async (): Promise<EtoroPnlResponse> => ({
+        clientPortfolio: { positions: [{ positionID: 12, instrumentID: 27, orderID: 4 }] },
+      }),
+      getCloseOrder: async () => ({ orderForClose: { statusID: 1 } }),
+    };
+    const matched = await reconcileOpenOrder({
+      client,
+      requestId: "11111111-1111-4111-8111-111111111111",
+      referenceId: "11111111-1111-4111-8111-111111111111",
+      instrumentId: 27,
+      etoroOrderId: 4,
+      sleep: async () => undefined,
+      pnlWaitMs: 0,
+    });
+    expect(matched).toEqual({ status: "FILLED", etoroOrderId: "4", positionId: "12" });
+    const otherPosition = await reconcileOpenOrder({
+      client,
+      requestId: "11111111-1111-4111-8111-111111111111",
+      referenceId: "11111111-1111-4111-8111-111111111111",
+      instrumentId: 27,
+      etoroOrderId: 99,
+      sleep: async () => undefined,
+      pnlWaitMs: 0,
+    });
+    expect(otherPosition.status).toBe("AMBIGUOUS");
+  });
+});
+
+describe("reconcileCloseOrder", () => {
+  it("does not treat in-flight close as filled", async () => {
+    const inFlight = await reconcileCloseOrder({
+      client: {
+        lookupOrder: async () => ({}),
+        getCloseOrder: async () => ({ orderForClose: { statusID: 2, orderID: 7 } }),
+        getDemoPnl: async (): Promise<EtoroPnlResponse> => ({
+          clientPortfolio: { positions: [{ positionID: 12, instrumentID: 27 }] },
+        }),
+      },
+      positionId: "12",
+      etoroOrderId: "7",
+      sleep: async () => undefined,
+      pnlWaitMs: 0,
+    });
+    expect(inFlight.status).toBe("AMBIGUOUS");
+  });
+});

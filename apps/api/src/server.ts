@@ -2,7 +2,7 @@ import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { hasEtoroCredentials, hasTelegramCredentials, type Env } from "@market-sentinel/config";
 import { EtoroDemoExecutionClient } from "@market-sentinel/etoro-client";
-import { psychologyChecklistSchema, REDIS_KEYS, sseEventSchema } from "@market-sentinel/contracts";
+import { psychologyChecklistSchema, REDIS_KEYS, readQueueStatsPayload, sseEventSchema } from "@market-sentinel/contracts";
 import { createDb } from "@market-sentinel/db";
 import { parseEventTimeUtc, parseWatchlistSymbol, RISK_DEFAULTS } from "@market-sentinel/domain";
 import Fastify from "fastify";
@@ -184,9 +184,14 @@ export async function buildServer(args: { env?: Partial<Env>; executionClient?: 
       marketStream,
       credentials: hasEtoroCredentials(env),
     };
+    const queue = redisOk
+      ? readQueueStatsPayload({ raw: await redis.get(REDIS_KEYS.queueStats).catch(() => null) })
+      : { queueDepth: null, workerLagMs: null };
     return {
       ready: composeReady({ checks }),
       checks,
+      queueDepth: queue.queueDepth,
+      workerLagMs: queue.workerLagMs,
     };
   });
 

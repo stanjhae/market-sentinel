@@ -351,6 +351,37 @@ export const healthLiveSchema = z.object({
   status: z.literal("ok"),
 });
 
+export const queueStatsSchema = z.object({
+  depth: z.number().int().nonnegative(),
+  lagMs: z.number().int().nonnegative(),
+  updatedAt: z.string(),
+});
+
+export function readQueueStatsPayload(args: { raw: string | null; now?: number }): {
+  queueDepth: number | null;
+  workerLagMs: number | null;
+} {
+  if (!args.raw) {
+    return { queueDepth: null, workerLagMs: null };
+  }
+  try {
+    const parsed = queueStatsSchema.safeParse(JSON.parse(args.raw));
+    if (!parsed.success) {
+      return { queueDepth: null, workerLagMs: null };
+    }
+    const finishedAt = Date.parse(parsed.data.updatedAt);
+    if (!Number.isFinite(finishedAt)) {
+      return { queueDepth: parsed.data.depth, workerLagMs: null };
+    }
+    return {
+      queueDepth: parsed.data.depth,
+      workerLagMs: Math.max(0, (args.now ?? Date.now()) - finishedAt),
+    };
+  } catch {
+    return { queueDepth: null, workerLagMs: null };
+  }
+}
+
 export const healthReadySchema = z.object({
   ready: z.boolean(),
   checks: z.object({
@@ -359,6 +390,8 @@ export const healthReadySchema = z.object({
     marketStream: z.boolean(),
     credentials: z.boolean(),
   }),
+  queueDepth: z.number().int().nonnegative().nullable().optional(),
+  workerLagMs: z.number().int().nonnegative().nullable().optional(),
 });
 
 export const authSessionSchema = z.object({
@@ -794,6 +827,7 @@ export type RiskEvaluationDto = z.infer<typeof riskEvaluationSchema>;
 export type PsychologyChecklistDto = z.infer<typeof psychologyChecklistSchema>;
 export type EconomicEventDto = z.infer<typeof economicEventDtoSchema>;
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
+export type QueueStats = z.infer<typeof queueStatsSchema>;
 export type HealthReady = z.infer<typeof healthReadySchema>;
 export type AuthSession = z.infer<typeof authSessionSchema>;
 export type ExecutionStatus = z.infer<typeof executionStatusSchema>;

@@ -9,7 +9,7 @@ See `SPEC.md` for the product contract.
 ```text
 apps/web      Next.js dashboard (no eToro secrets)
 apps/api      Fastify HTTP + health/SSE
-apps/worker   Persistent market-data process
+apps/worker   Persistent market-data process + BullMQ scheduled jobs
 packages/*    Pure domain, broker client, db, config
 ```
 
@@ -33,7 +33,7 @@ flowchart LR
 
 ## Tech stack
 
-pnpm, Turborepo, Next.js, Fastify, Zod, Drizzle, PostgreSQL, Redis, Vitest, Playwright, Pino.
+pnpm, Turborepo, Next.js, Fastify, Zod, Drizzle, PostgreSQL, Redis, BullMQ, Vitest, Playwright, Pino.
 
 ## Setup
 

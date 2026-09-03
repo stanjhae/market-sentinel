@@ -1,9 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { authSessionSchema, executionPreviewSchema, healthLiveSchema, sseEventSchema } from "./index.js";
+import {
+  authSessionSchema,
+  executionPreviewSchema,
+  healthLiveSchema,
+  healthReadySchema,
+  queueStatsSchema,
+  readQueueStatsPayload,
+  sseEventSchema,
+} from "./index.js";
 
 describe("contracts", () => {
   it("accepts a live health payload", () => {
     expect(healthLiveSchema.parse({ status: "ok" })).toEqual({ status: "ok" });
+  });
+
+  it("accepts ready payload with optional non-gating queue fields", () => {
+    expect(
+      healthReadySchema.parse({
+        ready: true,
+        checks: { database: true, redis: true, marketStream: true, credentials: true },
+      }).queueDepth,
+    ).toBeUndefined();
+    expect(
+      healthReadySchema.parse({
+        ready: false,
+        checks: { database: true, redis: true, marketStream: false, credentials: true },
+        queueDepth: 2,
+        workerLagMs: 40,
+      }).workerLagMs,
+    ).toBe(40);
+    expect(queueStatsSchema.parse({ depth: 0, lagMs: 12, updatedAt: "2026-09-02T00:00:00.000Z" }).depth).toBe(0);
+    expect(readQueueStatsPayload({ raw: null })).toEqual({ queueDepth: null, workerLagMs: null });
+    expect(
+      readQueueStatsPayload({
+        raw: JSON.stringify({ depth: 3, lagMs: 0, updatedAt: "2026-09-02T00:00:00.000Z" }),
+        now: Date.parse("2026-09-02T00:01:30.000Z"),
+      }),
+    ).toEqual({ queueDepth: 3, workerLagMs: 90_000 });
   });
 
   it("accepts Milestone 5 SSE event types without replaying history", () => {
