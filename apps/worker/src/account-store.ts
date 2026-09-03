@@ -100,6 +100,7 @@ export async function syncAccountAndRisk(args: AccountSyncContext): Promise<void
     }
   }
   const started = Date.now();
+  logger.info({ force: Boolean(args.force) }, "account sync started");
   try {
     const { data } = await args.rest.getAccountPnl();
     if (!isUsablePnlSnapshot({ portfolio: data.clientPortfolio })) {
