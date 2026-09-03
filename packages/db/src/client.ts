@@ -13,8 +13,18 @@ export function shouldRequireSsl(args: { connectionString: string; nodeEnv?: str
   return args.nodeEnv === "production";
 }
 
-export function postgresSslOption(args: { connectionString: string; nodeEnv?: string }): true | undefined {
-  return shouldRequireSsl(args) ? true : undefined;
+export function postgresSslOption(args: {
+  connectionString: string;
+  nodeEnv?: string;
+}): true | { rejectUnauthorized: boolean } | undefined {
+  if (!shouldRequireSsl(args)) {
+    return undefined;
+  }
+  const params = args.connectionString.split("?")[1] ?? "";
+  if (/(?:^|&)sslmode=require(?:&|$)/i.test(params)) {
+    return { rejectUnauthorized: false };
+  }
+  return true;
 }
 
 export function createDb(connectionString: string, args: { nodeEnv?: string } = {}) {

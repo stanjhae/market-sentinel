@@ -2,7 +2,15 @@ import type { Env } from "@market-sentinel/config";
 import { createLogger } from "@market-sentinel/observability";
 import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
-import { JOB_EVERY_MS, JOB_NAMES, JOB_RETENTION, QUEUE_NAME, QUEUE_PREFIX } from "./names.js";
+import {
+  JOB_EVERY_MS,
+  JOB_LOCK_DURATION_MS,
+  JOB_NAMES,
+  JOB_RETENTION,
+  QUEUE_NAME,
+  QUEUE_PREFIX,
+  shouldScheduleExecutionReconcile,
+} from "./names.js";
 import { publishQueueStats } from "./queue-stats.js";
 
 const logger = createLogger("worker");
@@ -77,7 +85,12 @@ export async function startDurableJobs(args: {
         jobLogger.warn({ err: error }, "queue stats skipped");
       }
     },
-    { connection: workerConnection, prefix: QUEUE_PREFIX, concurrency: 1 },
+    {
+      connection: workerConnection,
+      prefix: QUEUE_PREFIX,
+      concurrency: 1,
+      lockDuration: JOB_LOCK_DURATION_MS,
+    },
   );
   worker.on("failed", (job, error) => {
     logger.warn({ err: error, jobName: job?.name, jobId: job?.id }, "durable job failed");
@@ -93,11 +106,20 @@ export async function startDurableJobs(args: {
     { every: JOB_EVERY_MS.accountSync, immediately: false },
     { name: JOB_NAMES.accountSync, data: {}, opts: { ...JOB_RETENTION } },
   );
-  await queue.upsertJobScheduler(
-    JOB_NAMES.executionReconcile,
-    { every: JOB_EVERY_MS.executionReconcile, immediately: false },
-    { name: JOB_NAMES.executionReconcile, data: {}, opts: { ...JOB_RETENTION } },
-  );
+  if (
+    shouldScheduleExecutionReconcile({
+      accountType: args.env.ETORO_ACCOUNT_TYPE,
+      demoExecutionEnabled: args.env.DEMO_EXECUTION_ENABLED,
+    })
+  ) {
+    await queue.upsertJobScheduler(
+      JOB_NAMES.executionReconcile,
+      { every: JOB_EVERY_MS.executionReconcile, immediately: false },
+      { name: JOB_NAMES.executionReconcile, data: {}, opts: { ...JOB_RETENTION } },
+    );
+  } else {
+    await queue.removeJobScheduler(JOB_NAMES.executionReconcile);
+  }
 
   return {
     enqueueAccountSync: async (job) => {

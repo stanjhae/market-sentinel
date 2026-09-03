@@ -56,5 +56,11 @@ describe("schema", () => {
         nodeEnv: "test",
       }),
     ).toBeUndefined();
+    expect(
+      postgresSslOption({
+        connectionString: "postgres://sentinel@db.example:5432/app?sslmode=require",
+        nodeEnv: "production",
+      }),
+    ).toEqual({ rejectUnauthorized: false });
   });
 });

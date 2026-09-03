@@ -47,6 +47,7 @@ import { and, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
 import { maybeAlertPositionChange, maybeAlertRiskLimit, publishDomainEvent } from "./alert-store.js";
+import { HISTORY_PAGE_SIZE, nextTradeHistoryPage } from "./history-page.js";
 import { reconcileJournal } from "./journal-store.js";
 import type { TelegramCredentials } from "./alert-store.js";
 
@@ -339,11 +340,16 @@ async function syncHistory(args: {
 }): Promise<void> {
   const minDate = minDateString({ now: args.now, lookbackDays: RISK_DEFAULTS.historyLookbackDays });
   let page = 1;
+  let previousFirstPositionId: number | null = null;
   for (;;) {
-    const { items } = await args.rest.getTradeHistory({ minDate, page, pageSize: 100 });
-    if (items.length === 0) {
-      break;
-    }
+    const { items } = await args.rest.getTradeHistory({ minDate, page, pageSize: HISTORY_PAGE_SIZE });
+    const firstPositionId = typeof items[0]?.positionId === "number" ? items[0].positionId : null;
+    const step = nextTradeHistoryPage({
+      page,
+      itemCount: items.length,
+      firstPositionId,
+      previousFirstPositionId,
+    });
     for (const item of items) {
       const trade = normalizeHistoryItem({
         item,
@@ -355,10 +361,14 @@ async function syncHistory(args: {
       }
       await upsertTrade({ db: args.db, trade, raw: item });
     }
-    if (items.length < 100) {
+    if (step.done) {
+      if (step.reason === "repeat-page" || step.reason === "max-pages") {
+        logger.warn({ minDate, page, reason: step.reason }, "trade history pagination stopped");
+      }
       break;
     }
-    page += 1;
+    previousFirstPositionId = firstPositionId;
+    page = step.nextPage;
   }
 }
 
