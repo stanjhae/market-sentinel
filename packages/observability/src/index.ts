@@ -9,6 +9,8 @@ export type LogBindings = {
   strategyVersion?: string;
   tradePlanId?: string;
   brokerPositionId?: string;
+  jobName?: string;
+  jobId?: string;
 };
 
 export function createLogger(name: string, bindings: LogBindings = {}): Logger {

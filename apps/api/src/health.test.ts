@@ -21,4 +21,9 @@ describe("composeReady", () => {
     expect(composeReady({ checks: { ...healthy, database: false, marketStream: false } })).toBe(false);
     expect(composeReady({ checks: { ...healthy, marketStream: false } })).toBe(false);
   });
+
+  it("does not use queue depth or lag when composing ready", () => {
+    expect(composeReady({ checks: healthy })).toBe(true);
+    expect(composeReady({ checks: { ...healthy, redis: false } })).toBe(false);
+  });
 });

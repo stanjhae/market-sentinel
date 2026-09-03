@@ -16,6 +16,8 @@ export {
   EtoroDemoExecutionClient,
   findOpenInPnl,
   findPositionInPnl,
+  reconcileCloseOrder,
+  reconcileOpenOrder,
 } from "./execution-demo.js";
 export type {
   DemoCloseOrderResponse,
@@ -23,6 +25,8 @@ export type {
   DemoCreateOrderResponse,
   DemoOpenOrderBody,
   DemoOrderLookup,
+  DemoOrderReconcileClient,
+  DemoOrderReconcileResult,
   ExecutionSendKind,
   ExecutionSendResult,
   KeyEnvironment,

@@ -5,10 +5,9 @@ import { auditLogs, brokerOrders, brokerPositions, instruments, signals, tradePl
 import {
   assertDemoExecutionAllowed,
   buildDemoOpenBody,
-  classifyLookupStatus,
   createRequestId,
-  findOpenInPnl,
-  findPositionInPnl,
+  reconcileCloseOrder,
+  reconcileOpenOrder,
   type DemoCostBreakdown,
   type DemoOpenOrderBody,
   type ExecutionSendResult,
@@ -20,6 +19,8 @@ import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
 import { nonceSecret, PREVIEW_TTL_MS, signPreviewNonce, verifyPreviewNonce, type PreviewNoncePayload } from "./execution-nonce.js";
 import { evaluateStoredPlan } from "./risk.js";
+
+export { reconcileCloseOrder, reconcileOpenOrder };
 
 export type ExecutionDeps = {
   db: Database;
@@ -130,87 +131,6 @@ export async function writeAudit(args: {
     instrumentId: args.instrumentId,
     payloadJson: args.payload,
   });
-}
-
-export async function reconcileOpenOrder(args: {
-  client: EtoroDemoExecutionClient;
-  requestId: string;
-  referenceId: string;
-  instrumentId: number;
-  etoroOrderId?: number;
-  sleep?: (ms: number) => Promise<void>;
-  pnlWaitMs?: number;
-}): Promise<{ status: "FILLED" | "REJECTED" | "AMBIGUOUS"; etoroOrderId?: string; positionId?: string }> {
-  try {
-    const lookup = await args.client.lookupOrder({
-      requestId: createRequestId(),
-      orderId: args.etoroOrderId,
-      referenceId: args.etoroOrderId === undefined ? args.referenceId : undefined,
-    });
-    const classified = classifyLookupStatus({ statusId: lookup.status?.id });
-    if (classified === "FILLED") {
-      return {
-        status: "FILLED",
-        etoroOrderId: lookup.orderId !== undefined ? String(lookup.orderId) : args.etoroOrderId !== undefined ? String(args.etoroOrderId) : undefined,
-        positionId: lookup.positionExecutions?.[0]?.positionId !== undefined ? String(lookup.positionExecutions[0].positionId) : undefined,
-      };
-    }
-    if (classified === "REJECTED") {
-      return { status: "REJECTED", etoroOrderId: lookup.orderId !== undefined ? String(lookup.orderId) : undefined };
-    }
-  } catch {
-    // fall through to PnL
-  }
-  const wait = args.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  await wait(args.pnlWaitMs ?? 10_000);
-  try {
-    const pnl = await args.client.getDemoPnl({ requestId: createRequestId() });
-    const found = findOpenInPnl({ pnl, instrumentId: args.instrumentId, orderId: args.etoroOrderId });
-    if (found.found) {
-      return {
-        status: "FILLED",
-        etoroOrderId: found.orderId !== undefined ? String(found.orderId) : undefined,
-        positionId: found.positionId !== undefined ? String(found.positionId) : undefined,
-      };
-    }
-  } catch {
-    // still unknown
-  }
-  return { status: "AMBIGUOUS" };
-}
-
-export async function reconcileCloseOrder(args: {
-  client: EtoroDemoExecutionClient;
-  positionId: string;
-  etoroOrderId?: string | null;
-  sleep?: (ms: number) => Promise<void>;
-  pnlWaitMs?: number;
-}): Promise<{ status: "FILLED" | "REJECTED" | "AMBIGUOUS"; etoroOrderId?: string }> {
-  if (args.etoroOrderId) {
-    try {
-      const closeInfo = await args.client.getCloseOrder({ requestId: createRequestId(), orderId: args.etoroOrderId });
-      const classified = classifyLookupStatus({ statusId: closeInfo.orderForClose?.statusID });
-      if (classified === "FILLED") {
-        return { status: "FILLED", etoroOrderId: args.etoroOrderId };
-      }
-      if (classified === "REJECTED") {
-        return { status: "REJECTED", etoroOrderId: args.etoroOrderId };
-      }
-    } catch {
-      // fall through to PnL
-    }
-  }
-  const wait = args.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  await wait(args.pnlWaitMs ?? 10_000);
-  try {
-    const pnl = await args.client.getDemoPnl({ requestId: createRequestId() });
-    if (!findPositionInPnl({ pnl, positionId: args.positionId })) {
-      return { status: "FILLED", etoroOrderId: args.etoroOrderId ?? undefined };
-    }
-  } catch {
-    // still unknown
-  }
-  return { status: "AMBIGUOUS", etoroOrderId: args.etoroOrderId ?? undefined };
 }
 
 function parsePositiveAmount(args: { value: string | null | undefined }): string | null {
