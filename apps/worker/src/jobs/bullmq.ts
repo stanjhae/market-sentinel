@@ -7,10 +7,12 @@ import {
   JOB_LOCK_DURATION_MS,
   JOB_NAMES,
   JOB_RETENTION,
+  JOB_STALLED_INTERVAL_MS,
   QUEUE_NAME,
   QUEUE_PREFIX,
   shouldScheduleExecutionReconcile,
 } from "./names.js";
+import { reclaimActiveJobs, removeJobsByName } from "./reclaim-jobs.js";
 import { publishQueueStats } from "./queue-stats.js";
 
 const logger = createLogger("worker");
@@ -64,25 +66,28 @@ export async function startDurableJobs(args: {
     QUEUE_NAME,
     async (job) => {
       const jobLogger = createLogger("worker", { jobName: job.name, jobId: job.id });
-      if (job.name === JOB_NAMES.candleReconcile) {
-        await args.handlers.candleReconcile();
-      } else if (job.name === JOB_NAMES.accountSync) {
-        const force = Boolean((job.data as { force?: boolean } | undefined)?.force);
-        await args.handlers.accountSync({ force });
-      } else if (job.name === JOB_NAMES.executionReconcile) {
-        await args.handlers.executionReconcile();
-      } else {
-        jobLogger.warn({ jobName: job.name }, "unknown durable job name");
-      }
       try {
-        const counts = await queue.getJobCounts("wait", "active", "delayed");
-        await publishQueueStats({
-          redis: args.redis,
-          counts,
-          now: () => Date.now(),
-        });
-      } catch (error) {
-        jobLogger.warn({ err: error }, "queue stats skipped");
+        if (job.name === JOB_NAMES.candleReconcile) {
+          await args.handlers.candleReconcile();
+        } else if (job.name === JOB_NAMES.accountSync) {
+          const force = Boolean((job.data as { force?: boolean } | undefined)?.force);
+          await args.handlers.accountSync({ force });
+        } else if (job.name === JOB_NAMES.executionReconcile) {
+          await args.handlers.executionReconcile();
+        } else {
+          jobLogger.warn({ jobName: job.name }, "unknown durable job name");
+        }
+      } finally {
+        try {
+          const counts = await queue.getJobCounts("wait", "active", "delayed");
+          await publishQueueStats({
+            redis: args.redis,
+            counts,
+            now: () => Date.now(),
+          });
+        } catch (error) {
+          jobLogger.warn({ err: error }, "queue stats skipped");
+        }
       }
     },
     {
@@ -90,11 +95,17 @@ export async function startDurableJobs(args: {
       prefix: QUEUE_PREFIX,
       concurrency: 1,
       lockDuration: JOB_LOCK_DURATION_MS,
+      stalledInterval: JOB_STALLED_INTERVAL_MS,
     },
   );
   worker.on("failed", (job, error) => {
     logger.warn({ err: error, jobName: job?.name, jobId: job?.id }, "durable job failed");
   });
+
+  const reclaimed = await reclaimActiveJobs({ queue });
+  if (reclaimed > 0) {
+    logger.warn({ reclaimed }, "reclaimed leftover active jobs after worker start");
+  }
 
   await queue.upsertJobScheduler(
     JOB_NAMES.candleReconcile,
@@ -119,6 +130,7 @@ export async function startDurableJobs(args: {
     );
   } else {
     await queue.removeJobScheduler(JOB_NAMES.executionReconcile);
+    await removeJobsByName({ queue, name: JOB_NAMES.executionReconcile });
   }
 
   return {

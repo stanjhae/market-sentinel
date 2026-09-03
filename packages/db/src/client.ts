@@ -1,6 +1,23 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
+
+const SUPABASE_CA_PATH = join(dirname(fileURLToPath(import.meta.url)), "../certs/supabase-ca-2021.pem");
+
+export function postgresConnectionPort(args: { connectionString: string }): number | null {
+  try {
+    const parsed = new URL(args.connectionString);
+    if (parsed.port) {
+      return Number(parsed.port);
+    }
+    return parsed.protocol === "postgres:" || parsed.protocol === "postgresql:" ? 5432 : null;
+  } catch {
+    return null;
+  }
+}
 
 export function shouldRequireSsl(args: { connectionString: string; nodeEnv?: string }): boolean {
   const params = args.connectionString.split("?")[1] ?? "";
@@ -13,23 +30,38 @@ export function shouldRequireSsl(args: { connectionString: string; nodeEnv?: str
   return args.nodeEnv === "production";
 }
 
+export function isSupabaseConnection(args: { connectionString: string }): boolean {
+  try {
+    const host = new URL(args.connectionString).hostname.toLowerCase();
+    return host.endsWith(".supabase.com") || host.endsWith(".supabase.co") || host === "supabase.com" || host === "supabase.co";
+  } catch {
+    return false;
+  }
+}
+
+export function loadSupabaseCaPem(args: { path?: string } = {}): string {
+  return readFileSync(args.path ?? SUPABASE_CA_PATH, "utf8");
+}
+
 export function postgresSslOption(args: {
   connectionString: string;
   nodeEnv?: string;
-}): true | { rejectUnauthorized: boolean } | undefined {
+  supabaseCaPem?: string;
+}): true | { rejectUnauthorized: true; ca?: string } | undefined {
   if (!shouldRequireSsl(args)) {
     return undefined;
   }
-  const params = args.connectionString.split("?")[1] ?? "";
-  if (/(?:^|&)sslmode=require(?:&|$)/i.test(params)) {
-    return { rejectUnauthorized: false };
+  if (isSupabaseConnection({ connectionString: args.connectionString })) {
+    return {
+      rejectUnauthorized: true,
+      ca: args.supabaseCaPem ?? loadSupabaseCaPem(),
+    };
   }
-  return true;
+  return { rejectUnauthorized: true };
 }
 
 export function postgresPrepareEnabled(args: { connectionString: string }): boolean {
-  const host = args.connectionString.split("?")[0] ?? "";
-  return !/:6543(?:\/|$)/.test(host);
+  return postgresConnectionPort({ connectionString: args.connectionString }) !== 6543;
 }
 
 export function createDb(connectionString: string, args: { nodeEnv?: string } = {}) {

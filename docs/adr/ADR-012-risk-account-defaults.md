@@ -35,7 +35,7 @@ Consecutive losses: closed trades only, ordered by `closeTimestamp`. A streak of
 
 Cooldown: last losing close + `cooldownAfterLossMinutes` (default 15). `POST /risk/cooldown` can set or extend a manual until-timestamp. State lives in Postgres `risk_state`.
 
-History lookback is **30 days**. Paginate with `minDate` / `page` / `pageSize` (100). Stop on a short page, a repeated first `positionId` (ignored `page`), or 20 pages (2,000 trades). Keep each window under one year. Demo `InsufficientPermissions` is `historyUnavailable`, not a generic auth failure; PnL and open positions still sync.
+History lookback is **30 days**. Paginate with `minDate` / `page` / `pageSize` (100). Stop on a short page, a repeated first-row fingerprint (ignored `page`, including a missing `positionId`), or 20 pages (2,000 trades). A truncated or stuck page sets `historyUnavailable` so risk does not treat a partial book as complete. Keep each window under one year. Demo `InsufficientPermissions` is `historyUnavailable`, not a generic auth failure; PnL and open positions still sync.
 
 Poll every **60 seconds**. `POST /account/sync` is allowed and debounced 10 seconds. Conflict = same `etoroPositionId` with a changed open rate, units, or open time → `RECONCILIATION_CONFLICT` audit, keep the previous row.
 

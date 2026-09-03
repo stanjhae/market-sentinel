@@ -14,7 +14,7 @@ Private single-user production. See [ADR-018](../adr/ADR-018-production-deploy.m
 
 1. Create a project. Copy the **transaction pooler** URI (port 6543) into `DATABASE_URL`. Runtime disables postgres.js prepared statements on that port.
 2. Copy the **session pooler** URI (port 5432, same `*.pooler.supabase.com` host) into `DATABASE_DIRECT_URL`. The `db.<ref>.supabase.co` host is IPv6-only; skip it unless the VM has IPv6 or you enable the IPv4 add-on.
-3. Append `?sslmode=require` to both. The client encrypts and does not verify the pooler CA (libpq `require`).
+3. Append `?sslmode=require` to both. The client verifies the bundled Supabase CA.
 4. Apply migrations on the VM with `docker compose --profile migrate run --rm migrate` each time schema changes. Do not rely on `up -d` to migrate.
 
 ## 2. GCP VM
@@ -56,7 +56,8 @@ Confirm:
 ```bash
 curl -fsS "https://$PUBLIC_HOST/health/live"
 curl -fsS "https://$PUBLIC_HOST/sentinel-api/health/live"
-curl -fsS "https://$PUBLIC_HOST/sentinel-api/health/ready"
+# /health/ready is session-gated when APP_PASSWORD is set. Sign in first, then:
+curl -fsS -b "sentinel_session=..." "https://$PUBLIC_HOST/sentinel-api/health/ready"
 ```
 
 Ready is `true` only after the worker is LIVE with eToro. Login at `/login` before treating a `ready: false` boot as a failure.

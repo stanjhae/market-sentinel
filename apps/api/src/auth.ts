@@ -5,9 +5,70 @@ export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 export const LOGIN_MAX_FAILURES = 5;
 export const LOGIN_LOCK_MS = 15 * 60 * 1000;
 
-const PUBLIC_PATHS = new Set(["/health/live", "/health/ready", "/auth/session", "/auth/login", "/auth/logout"]);
+const PUBLIC_PATHS = new Set(["/health/live", "/auth/session", "/auth/login", "/auth/logout"]);
 
 const loginAttempts = new Map<string, { failures: number; lockedUntil: number }>();
+
+export type LoginLockSnapshot = { failures: number; lockedUntil: number };
+
+export type LoginLockStore = {
+  get: (ip: string) => Promise<LoginLockSnapshot | undefined>;
+  set: (args: { ip: string; value: LoginLockSnapshot; ttlMs: number }) => Promise<void>;
+  del: (ip: string) => Promise<void>;
+};
+
+const memoryLoginLockStore: LoginLockStore = {
+  get: async (ip) => loginAttempts.get(ip),
+  set: async (args) => {
+    loginAttempts.set(args.ip, args.value);
+  },
+  del: async (ip) => {
+    loginAttempts.delete(ip);
+  },
+};
+
+export function createRedisLoginLockStore(args: {
+  redis: {
+    get: (key: string) => Promise<string | null>;
+    set: (key: string, value: string, mode: "PX", ttlMs: number) => Promise<unknown>;
+    del: (key: string) => Promise<unknown>;
+  };
+  keyFor: (ip: string) => string;
+}): LoginLockStore {
+  return {
+    get: async (ip) => {
+      try {
+        const raw = await args.redis.get(args.keyFor(ip));
+        if (!raw) {
+          return memoryLoginLockStore.get(ip);
+        }
+        const parsed = JSON.parse(raw) as LoginLockSnapshot;
+        if (typeof parsed.failures === "number" && typeof parsed.lockedUntil === "number") {
+          return parsed;
+        }
+      } catch {
+        return memoryLoginLockStore.get(ip);
+      }
+      return memoryLoginLockStore.get(ip);
+    },
+    set: async (entry) => {
+      await memoryLoginLockStore.set(entry);
+      try {
+        await args.redis.set(args.keyFor(entry.ip), JSON.stringify(entry.value), "PX", Math.max(1, entry.ttlMs));
+      } catch {
+        // Memory remains the process-local fallback when Redis is down.
+      }
+    },
+    del: async (ip) => {
+      await memoryLoginLockStore.del(ip);
+      try {
+        await args.redis.del(args.keyFor(ip));
+      } catch {
+        // Ignore Redis delete failures after the local entry is cleared.
+      }
+    },
+  };
+}
 
 type SessionPayload = {
   v: 1;
@@ -134,30 +195,41 @@ export function requestIsHttps(args: { protocol?: string; forwardedProto?: strin
   return args.protocol === "https" || forwarded === "https";
 }
 
-export function loginLockStatus(args: { ip: string; now: number }): { locked: boolean; retryAfterSec: number } {
-  const current = loginAttempts.get(args.ip);
+export async function loginLockStatus(args: {
+  ip: string;
+  now: number;
+  store?: LoginLockStore;
+}): Promise<{ locked: boolean; retryAfterSec: number }> {
+  const store = args.store ?? memoryLoginLockStore;
+  const current = await store.get(args.ip);
   if (!current || args.now >= current.lockedUntil) {
     return { locked: false, retryAfterSec: 0 };
   }
   return { locked: true, retryAfterSec: Math.ceil((current.lockedUntil - args.now) / 1000) };
 }
 
-export function recordLoginFailure(args: { ip: string; now: number }): { locked: boolean; retryAfterSec: number } {
-  const existing = loginAttempts.get(args.ip) ?? { failures: 0, lockedUntil: 0 };
+export async function recordLoginFailure(args: {
+  ip: string;
+  now: number;
+  store?: LoginLockStore;
+}): Promise<{ locked: boolean; retryAfterSec: number }> {
+  const store = args.store ?? memoryLoginLockStore;
+  const existing = (await store.get(args.ip)) ?? { failures: 0, lockedUntil: 0 };
   if (args.now < existing.lockedUntil) {
     return { locked: true, retryAfterSec: Math.ceil((existing.lockedUntil - args.now) / 1000) };
   }
   const failures = (args.now >= existing.lockedUntil ? existing.failures : 0) + 1;
   if (failures >= LOGIN_MAX_FAILURES) {
-    loginAttempts.set(args.ip, { failures: 0, lockedUntil: args.now + LOGIN_LOCK_MS });
+    const lockedUntil = args.now + LOGIN_LOCK_MS;
+    await store.set({ ip: args.ip, value: { failures: 0, lockedUntil }, ttlMs: LOGIN_LOCK_MS });
     return { locked: true, retryAfterSec: Math.ceil(LOGIN_LOCK_MS / 1000) };
   }
-  loginAttempts.set(args.ip, { failures, lockedUntil: 0 });
+  await store.set({ ip: args.ip, value: { failures, lockedUntil: 0 }, ttlMs: LOGIN_LOCK_MS });
   return { locked: false, retryAfterSec: 0 };
 }
 
-export function clearLoginFailures(args: { ip: string }): void {
-  loginAttempts.delete(args.ip);
+export async function clearLoginFailures(args: { ip: string; store?: LoginLockStore }): Promise<void> {
+  await (args.store ?? memoryLoginLockStore).del(args.ip);
 }
 
 export function resetLoginAttemptsForTests(): void {

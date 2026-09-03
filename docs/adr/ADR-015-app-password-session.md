@@ -22,9 +22,9 @@ Local open-by-default behavior is unchanged. `GET /auth/session` returns `{ requ
 
 ### When `APP_PASSWORD` is set
 
-- Public routes are exact normalized paths only: `/health/live`, `/health/ready`, `/auth/session`, `/auth/login`, `/auth/logout`, plus CORS `OPTIONS`. `/auth/../account` is not public.
-- Every other route, including `GET /account`, settings, and `GET /stream`, returns 401 without a valid session cookie.
-- `POST /auth/login` compares the submitted password with `crypto.timingSafeEqual` over SHA-256 digests. Five failures from the same IP lock login for 15 minutes (`429` + `Retry-After`).
+- Public routes are exact normalized paths only: `/health/live`, `/auth/session`, `/auth/login`, `/auth/logout`, plus CORS `OPTIONS`. `/health/ready` and `/auth/../account` are not public.
+- Every other route, including `GET /health/ready`, `GET /account`, settings, and `GET /stream`, returns 401 without a valid session cookie.
+- `POST /auth/login` compares the submitted password with `crypto.timingSafeEqual` over SHA-256 digests. Five failures from the same IP lock login for 15 minutes (`429` + `Retry-After`). Lock state is written to Redis (`sentinel:login-lock:<ip>`) so it survives API restarts, with an in-process fallback if Redis is down.
 - Cookie payload is `{ v: 1, exp }` HMAC-SHA256 keyed from `APP_PASSWORD`. MAC comparison hashes both sides so length cannot short-circuit `timingSafeEqual`. The password is never stored in the cookie, logs, or response bodies.
 - Absolute expiry is 12 hours.
 - Cookie flags: `HttpOnly; Path=/; SameSite=Lax`, plus `Secure` only on HTTPS. The web app calls `/sentinel-api/*` on the Next.js origin so the cookie is first-party.

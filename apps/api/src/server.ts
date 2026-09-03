@@ -22,6 +22,7 @@ import {
   clearLoginFailures,
   clearSessionCookieHeader,
   isAllowedBrowserOrigin,
+  createRedisLoginLockStore,
   isPublicRoute,
   loginLockStatus,
   passwordsMatch,
@@ -122,6 +123,10 @@ export async function buildServer(args: { env?: Partial<Env>; executionClient?: 
   redis.on("error", () => {
     // Connection failures are reflected in /health/ready and /markets.
   });
+  const loginLockStore = createRedisLoginLockStore({
+    redis,
+    keyFor: (ip) => REDIS_KEYS.loginLock(ip),
+  });
   const dbPair = createDb(env.DATABASE_URL);
   const executionClient =
     args.executionClient !== undefined
@@ -209,7 +214,7 @@ export async function buildServer(args: { env?: Partial<Env>; executionClient?: 
 
   app.post("/auth/login", async (request, reply) => {
     const now = Date.now();
-    const lock = loginLockStatus({ ip: request.ip, now });
+    const lock = await loginLockStatus({ ip: request.ip, now, store: loginLockStore });
     if (lock.locked) {
       reply.header("retry-after", String(lock.retryAfterSec));
       return reply.code(429).send({ error: "too-many-attempts" });
@@ -217,14 +222,14 @@ export async function buildServer(args: { env?: Partial<Env>; executionClient?: 
     const body = request.body as { password?: unknown };
     const provided = typeof body?.password === "string" ? body.password : "";
     if (!env.APP_PASSWORD || !passwordsMatch({ provided, expected: env.APP_PASSWORD })) {
-      const next = recordLoginFailure({ ip: request.ip, now });
+      const next = await recordLoginFailure({ ip: request.ip, now, store: loginLockStore });
       if (next.locked) {
         reply.header("retry-after", String(next.retryAfterSec));
         return reply.code(429).send({ error: "too-many-attempts" });
       }
       return reply.code(401).send({ error: "unauthorized" });
     }
-    clearLoginFailures({ ip: request.ip });
+    await clearLoginFailures({ ip: request.ip, store: loginLockStore });
     const token = signSession({ secret: env.APP_PASSWORD, now });
     const secure = requestIsHttps({
       protocol: request.protocol,

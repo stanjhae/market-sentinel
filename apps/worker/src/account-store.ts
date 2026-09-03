@@ -47,7 +47,7 @@ import { and, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { randomUUID } from "node:crypto";
 import { maybeAlertPositionChange, maybeAlertRiskLimit, publishDomainEvent } from "./alert-store.js";
-import { HISTORY_PAGE_SIZE, nextTradeHistoryPage } from "./history-page.js";
+import { HISTORY_PAGE_SIZE, nextTradeHistoryPage, tradeHistoryItemFingerprint } from "./history-page.js";
 import { reconcileJournal } from "./journal-store.js";
 import type { TelegramCredentials } from "./alert-store.js";
 
@@ -135,13 +135,17 @@ export async function syncAccountAndRisk(args: AccountSyncContext): Promise<void
 
     let historyUnavailable = false;
     try {
-      await syncHistory({
+      const history = await syncHistory({
         rest: args.rest,
         db: args.db,
         symbolById,
         sourceAccount: accountType,
         now,
       });
+      if (history.truncated) {
+        historyUnavailable = true;
+        logger.warn({ accountType, reason: history.reason }, "trade history truncated; risk uses incomplete book");
+      }
     } catch (error) {
       if (isInsufficientPermissions({ error })) {
         historyUnavailable = true;
@@ -338,18 +342,18 @@ async function syncHistory(args: {
   symbolById: Map<number, CanonicalSymbol>;
   sourceAccount: AccountType;
   now: Date;
-}): Promise<void> {
+}): Promise<{ truncated: boolean; reason?: "repeat-page" | "max-pages" }> {
   const minDate = minDateString({ now: args.now, lookbackDays: RISK_DEFAULTS.historyLookbackDays });
   let page = 1;
-  let previousFirstPositionId: number | null = null;
+  let previousFirstFingerprint: string | null = null;
   for (;;) {
     const { items } = await args.rest.getTradeHistory({ minDate, page, pageSize: HISTORY_PAGE_SIZE });
-    const firstPositionId = typeof items[0]?.positionId === "number" ? items[0].positionId : null;
+    const firstFingerprint = tradeHistoryItemFingerprint({ item: items[0] ?? null });
     const step = nextTradeHistoryPage({
       page,
       itemCount: items.length,
-      firstPositionId,
-      previousFirstPositionId,
+      firstFingerprint,
+      previousFirstFingerprint,
     });
     for (const item of items) {
       const trade = normalizeHistoryItem({
@@ -365,10 +369,11 @@ async function syncHistory(args: {
     if (step.done) {
       if (step.reason === "repeat-page" || step.reason === "max-pages") {
         logger.warn({ minDate, page, reason: step.reason }, "trade history pagination stopped");
+        return { truncated: true, reason: step.reason };
       }
-      break;
+      return { truncated: false };
     }
-    previousFirstPositionId = firstPositionId;
+    previousFirstFingerprint = firstFingerprint;
     page = step.nextPage;
   }
 }

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { postgresPrepareEnabled, postgresSslOption, shouldRequireSsl } from "./client.js";
+import {
+  isSupabaseConnection,
+  loadSupabaseCaPem,
+  postgresConnectionPort,
+  postgresPrepareEnabled,
+  postgresSslOption,
+  shouldRequireSsl,
+} from "./client.js";
 import { instruments, auditLogs, candles, indicatorSnapshots, pivots, priceZones, marketRegimes, signals, alerts, appSettings, journalEntries, backtestRuns, brokerOrders } from "./schema.js";
 
 describe("schema", () => {
@@ -49,7 +56,7 @@ describe("schema", () => {
         connectionString: "postgres://sentinel@db.example:5432/app",
         nodeEnv: "production",
       }),
-    ).toBe(true);
+    ).toEqual({ rejectUnauthorized: true });
     expect(
       postgresSslOption({
         connectionString: "postgres://sentinel@localhost:5432/app",
@@ -61,16 +68,40 @@ describe("schema", () => {
         connectionString: "postgres://sentinel@db.example:5432/app?sslmode=require",
         nodeEnv: "production",
       }),
-    ).toEqual({ rejectUnauthorized: false });
+    ).toEqual({ rejectUnauthorized: true });
+  });
+
+  it("parses the port from the URL host, not the password", () => {
+    expect(
+      postgresConnectionPort({
+        connectionString: "postgres://postgres.proj:secret:6543@aws-0-eu-central-1.pooler.supabase.com:5432/postgres",
+      }),
+    ).toBe(5432);
+    expect(
+      postgresPrepareEnabled({
+        connectionString: "postgres://postgres.proj:secret:6543@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require",
+      }),
+    ).toBe(true);
     expect(
       postgresPrepareEnabled({
         connectionString: "postgres://postgres.proj@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require",
       }),
     ).toBe(false);
-    expect(
-      postgresPrepareEnabled({
-        connectionString: "postgres://postgres.proj@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require",
-      }),
-    ).toBe(true);
+  });
+
+  it("verifies Supabase TLS against the bundled CA", () => {
+    const connectionString =
+      "postgres://postgres.proj@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require";
+    expect(isSupabaseConnection({ connectionString })).toBe(true);
+    const option = postgresSslOption({
+      connectionString,
+      nodeEnv: "production",
+      supabaseCaPem: "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n",
+    });
+    expect(option).toEqual({
+      rejectUnauthorized: true,
+      ca: "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n",
+    });
+    expect(loadSupabaseCaPem()).toContain("BEGIN CERTIFICATE");
   });
 });
