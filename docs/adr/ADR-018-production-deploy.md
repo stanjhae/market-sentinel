@@ -22,11 +22,11 @@ The operator already has GCP, Vercel, and Supabase. ADR-003 keeps the worker off
 
 **TLS and cookies.** Caddy terminates HTTPS and routes `/` → web, `/sentinel-api/*` → API (strip prefix, `flush_interval -1` for SSE). Gzip is only on the web handle so `/stream` is not encoded. Fastify `trustProxy` is a one-hop function in production and off otherwise. CORS stay localhost-only; the browser talks same-origin through Caddy. Let's Encrypt HTTP-01 needs **80/443 from the internet**; SSH stays operator-IP-only. `APP_PASSWORD` remains the app gate. `PUBLIC_HOST=:80` is HTTP-only first boot. Without a purchased domain, an IP hostname such as `<ip>.sslip.io` is enough for ACME.
 
-**Database.** Runtime uses `DATABASE_URL` (Supabase pooler allowed). Apply schema with `docker compose --profile migrate run --rm migrate` (uses `DATABASE_DIRECT_URL` when set). Production connections use postgres.js `ssl: true` unless `sslmode=disable`. `sslmode=require` encrypts without CA verify (libpq / Supabase pooler). Transaction-mode pooler (port 6543) sets `prepare: false`.
+**Database.** Runtime uses `DATABASE_URL` (Supabase pooler allowed). Apply schema with `docker compose --profile migrate run --rm migrate` (uses `DATABASE_DIRECT_URL` when set). TLS always verifies the server certificate (`rejectUnauthorized: true`). Supabase hosts use the bundled `packages/db/certs/supabase-ca-2021.pem` root/intermediate. Transaction-mode pooler (port 6543) sets `prepare: false`. Port is parsed from the URL host, not the password.
 
 **Processes.** App images run as `node`. `PUBLIC_HOST` is required. Do not publish 3000/3001/6379.
 
-**Health.** Container and Caddy checks use `/health/live` only. Operators use `/sentinel-api/health/ready` after the worker is LIVE. Ready must not restart the API on boot.
+**Health.** Container and Caddy checks use `/health/live` only. `/sentinel-api/health/ready` requires a session when `APP_PASSWORD` is set so stream/credential details are not public. Ready must not restart the API on boot.
 
 **Images.** One Dockerfile with targets `api`, `worker`, `web`, `migrate`. CI builds them after verify. Push to Artifact Registry only when `GCP_ARTIFACT_REGISTRY` is set on `main`.
 

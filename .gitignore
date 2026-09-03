@@ -10,6 +10,7 @@ coverage
 .env.*
 !.env.example
 !.env.production.example
+supabase/.temp/
 playwright-report
 test-results
 .drizzle

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  clearLoginFailures,
   clearSessionCookieHeader,
+  createRedisLoginLockStore,
   isAllowedBrowserOrigin,
   isPublicRoute,
   loginLockStatus,
@@ -24,7 +26,7 @@ const password = "correct-horse-battery";
 describe("session helpers", () => {
   it("treats only exact health and auth paths as public", () => {
     expect(isPublicRoute({ url: "/health/live", method: "GET" })).toBe(true);
-    expect(isPublicRoute({ url: "/health/ready", method: "GET" })).toBe(true);
+    expect(isPublicRoute({ url: "/health/ready", method: "GET" })).toBe(false);
     expect(isPublicRoute({ url: "/auth/session", method: "GET" })).toBe(true);
     expect(isPublicRoute({ url: "/auth/login", method: "POST" })).toBe(true);
     expect(isPublicRoute({ url: "/auth/logout", method: "POST" })).toBe(true);
@@ -81,14 +83,36 @@ describe("login lockout", () => {
     resetLoginAttemptsForTests();
   });
 
-  it("locks an IP after five failures", () => {
+  it("locks an IP after five failures", async () => {
     const now = 1_000;
     for (let index = 0; index < LOGIN_MAX_FAILURES - 1; index += 1) {
-      expect(recordLoginFailure({ ip: "1.1.1.1", now }).locked).toBe(false);
+      expect((await recordLoginFailure({ ip: "1.1.1.1", now })).locked).toBe(false);
     }
-    expect(recordLoginFailure({ ip: "1.1.1.1", now }).locked).toBe(true);
-    expect(loginLockStatus({ ip: "1.1.1.1", now }).locked).toBe(true);
-    expect(loginLockStatus({ ip: "2.2.2.2", now }).locked).toBe(false);
+    expect((await recordLoginFailure({ ip: "1.1.1.1", now })).locked).toBe(true);
+    expect((await loginLockStatus({ ip: "1.1.1.1", now })).locked).toBe(true);
+    expect((await loginLockStatus({ ip: "2.2.2.2", now })).locked).toBe(false);
+  });
+
+  it("persists lock snapshots through the Redis store", async () => {
+    const data = new Map<string, string>();
+    const store = createRedisLoginLockStore({
+      redis: {
+        get: async (key) => data.get(key) ?? null,
+        set: async (key, value, _mode, _ttlMs) => {
+          data.set(key, value);
+          return "OK";
+        },
+        del: async (key) => {
+          data.delete(key);
+          return 1;
+        },
+      },
+      keyFor: (ip) => `sentinel:login-lock:${ip}`,
+    });
+    expect((await recordLoginFailure({ ip: "9.9.9.9", now: 1, store })).locked).toBe(false);
+    expect(data.get("sentinel:login-lock:9.9.9.9")).toContain("failures");
+    await expect(clearLoginFailures({ ip: "9.9.9.9", store })).resolves.toBeUndefined();
+    expect(data.has("sentinel:login-lock:9.9.9.9")).toBe(false);
   });
 });
 
@@ -117,8 +141,19 @@ describe("app password gate", () => {
     const stream = await app.inject({ method: "GET", url: "/stream" });
     expect(stream.statusCode).toBe(401);
     const ready = await app.inject({ method: "GET", url: "/health/ready" });
-    expect(ready.statusCode).toBe(200);
-    expect(ready.json()).toEqual(
+    expect(ready.statusCode).toBe(401);
+    expect(ready.json()).toEqual({ error: "unauthorized" });
+    const login = await app.inject({ method: "POST", url: "/auth/login", payload: { password } });
+    const setCookie = login.headers["set-cookie"];
+    const cookieHeader = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    const sessionPair = String(cookieHeader).split(";")[0];
+    const authedReady = await app.inject({
+      method: "GET",
+      url: "/health/ready",
+      headers: { cookie: sessionPair },
+    });
+    expect(authedReady.statusCode).toBe(200);
+    expect(authedReady.json()).toEqual(
       expect.objectContaining({
         ready: expect.any(Boolean),
         checks: expect.objectContaining({ database: expect.any(Boolean) }),

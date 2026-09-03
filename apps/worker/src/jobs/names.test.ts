@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JOB_EVERY_MS, JOB_LOCK_DURATION_MS, JOB_RETENTION, shouldScheduleExecutionReconcile } from "./names.js";
+import { JOB_EVERY_MS, JOB_LOCK_DURATION_MS, JOB_RETENTION, JOB_STALLED_INTERVAL_MS, shouldScheduleExecutionReconcile } from "./names.js";
 
 describe("job scheduler defaults", () => {
   it("waits a full interval before the first repeatable run and caps Redis job history", () => {
@@ -13,7 +13,8 @@ describe("job scheduler defaults", () => {
       removeOnComplete: { count: 20 },
       removeOnFail: { count: 50 },
     });
-    expect(JOB_LOCK_DURATION_MS).toBe(600_000);
+    expect(JOB_LOCK_DURATION_MS).toBe(30_000);
+    expect(JOB_STALLED_INTERVAL_MS).toBe(15_000);
     expect(
       shouldScheduleExecutionReconcile({ accountType: "real", demoExecutionEnabled: false }),
     ).toBe(false);

@@ -18,7 +18,8 @@ export const JOB_RETENTION = {
   removeOnFail: { count: 50 },
 } as const;
 
-export const JOB_LOCK_DURATION_MS = 10 * 60_000;
+export const JOB_LOCK_DURATION_MS = 30_000;
+export const JOB_STALLED_INTERVAL_MS = 15_000;
 
 export function shouldScheduleExecutionReconcile(args: {
   accountType: "real" | "demo";

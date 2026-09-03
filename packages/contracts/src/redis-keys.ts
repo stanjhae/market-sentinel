@@ -16,4 +16,5 @@ export const REDIS_KEYS = {
   lastAccountSyncAt: "sentinel:account:last-sync",
   forceAccountSync: "sentinel:account:force-sync",
   queueStats: "sentinel:queue:stats",
+  loginLock: (ip: string) => `sentinel:login-lock:${ip}`,
 } as const;
