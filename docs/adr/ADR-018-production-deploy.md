@@ -20,9 +20,9 @@ The operator already has GCP, Vercel, and Supabase. ADR-003 keeps the worker off
 
 **Fail closed.** `NODE_ENV=production` requires `APP_PASSWORD` (min 12), `DATABASE_URL`, `REDIS_URL`, and both eToro keys. Localhost URL defaults apply only in development and test.
 
-**TLS and cookies.** Caddy terminates HTTPS and routes `/` → web, `/sentinel-api/*` → API (strip prefix, `flush_interval -1` for SSE). Gzip is only on the web handle so `/stream` is not encoded. Fastify `trustProxy` is a one-hop function in production and off otherwise. CORS stay localhost-only; the browser talks same-origin through Caddy.
+**TLS and cookies.** Caddy terminates HTTPS and routes `/` → web, `/sentinel-api/*` → API (strip prefix, `flush_interval -1` for SSE). Gzip is only on the web handle so `/stream` is not encoded. Fastify `trustProxy` is a one-hop function in production and off otherwise. CORS stay localhost-only; the browser talks same-origin through Caddy. Let's Encrypt HTTP-01 needs **80/443 from the internet**; SSH stays operator-IP-only. `APP_PASSWORD` remains the app gate. `PUBLIC_HOST=:80` is HTTP-only first boot. Without a purchased domain, an IP hostname such as `<ip>.sslip.io` is enough for ACME.
 
-**Database.** Runtime uses `DATABASE_URL` (Supabase pooler allowed). Apply schema with `docker compose --profile migrate run --rm migrate` (uses `DATABASE_DIRECT_URL` when set). Production connections use postgres.js `ssl: true` unless `sslmode=disable`.
+**Database.** Runtime uses `DATABASE_URL` (Supabase pooler allowed). Apply schema with `docker compose --profile migrate run --rm migrate` (uses `DATABASE_DIRECT_URL` when set). Production connections use postgres.js `ssl: true` unless `sslmode=disable`. `sslmode=require` encrypts without CA verify (libpq / Supabase pooler).
 
 **Processes.** App images run as `node`. `PUBLIC_HOST` is required. Do not publish 3000/3001/6379.
 

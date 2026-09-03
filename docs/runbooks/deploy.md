@@ -12,15 +12,15 @@ Private single-user production. See [ADR-018](../adr/ADR-018-production-deploy.m
 
 ## 1. Supabase
 
-1. Create a project. Copy the **session pooler** URI (port 6543) into `DATABASE_URL` and the **direct** URI (port 5432) into `DATABASE_DIRECT_URL`.
-2. Append `?sslmode=require` to both.
-3. If the VM cannot reach IPv6, enable the Supabase IPv4 add-on and use that host.
+1. Create a project. Copy the **transaction pooler** URI (port 6543) into `DATABASE_URL`.
+2. Copy the **session pooler** URI (port 5432, same `*.pooler.supabase.com` host) into `DATABASE_DIRECT_URL`. The `db.<ref>.supabase.co` host is IPv6-only; skip it unless the VM has IPv6 or you enable the IPv4 add-on.
+3. Append `?sslmode=require` to both. The client encrypts and does not verify the pooler CA (libpq `require`).
 4. Apply migrations on the VM with `docker compose --profile migrate run --rm migrate` each time schema changes. Do not rely on `up -d` to migrate.
 
 ## 2. GCP VM
 
 1. Create an `e2-small` or `e2-medium` VM (2 GB RAM minimum; 4 GB is more comfortable for Next + worker). Debian or Ubuntu, Docker + Compose plugin installed.
-2. Firewall: allow **80/443 from your IP** (or IAP). Do not publish 3000, 3001, or 6379.
+2. Firewall: allow **80/443 from the internet** (Let's Encrypt HTTP-01). Keep **SSH operator-IP-only** (or IAP). Do not publish 3000, 3001, or 6379.
 3. Optional Artifact Registry repo, e.g. `us-central1-docker.pkg.dev/PROJECT/market-sentinel`. Set GitHub Actions variable `GCP_ARTIFACT_REGISTRY` to that prefix and add Workload Identity secrets `GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` so `main` pushes images.
 
 ## 3. Env file
@@ -37,7 +37,7 @@ chmod 600 /opt/market-sentinel/.env.production
 
 Fill every required field. Keep `DEMO_EXECUTION_ENABLED=false` unless you want Demo orders. `REDIS_URL=redis://redis:6379` is correct inside Compose.
 
-HTTP-only bring-up (no public DNS yet): set `PUBLIC_HOST=:80`. Switch to `sentinel.example.com` and `ACME_EMAIL` when DNS is ready.
+HTTP-only bring-up: set `PUBLIC_HOST=:80`. For TLS without a purchased domain, point `PUBLIC_HOST` at `<vm-ip>.sslip.io` (or your own A record) and set `ACME_EMAIL`. Recreate Caddy after changing `PUBLIC_HOST`.
 
 ## 4. First boot
 
