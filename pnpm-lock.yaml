@@ -89,13 +89,13 @@ importers:
       ioredis:
         specifier: ^5.7.0
         version: 5.11.1
+      tsx:
+        specifier: ^4.20.5
+        version: 4.23.13
     devDependencies:
       '@types/node':
         specifier: ^24.3.0
         version: 24.13.3
-      tsx:
-        specifier: ^4.20.5
-        version: 4.23.13
 
   apps/web:
     dependencies:
@@ -202,13 +202,13 @@ importers:
       ioredis:
         specifier: ^5.7.0
         version: 5.11.1
+      tsx:
+        specifier: ^4.20.5
+        version: 4.23.13
     devDependencies:
       '@types/node':
         specifier: ^24.3.0
         version: 24.13.3
-      tsx:
-        specifier: ^4.20.5
-        version: 4.23.13
 
   packages/backtest:
     dependencies:
@@ -258,13 +258,13 @@ importers:
       postgres:
         specifier: ^3.4.7
         version: 3.4.9
+      tsx:
+        specifier: ^4.20.5
+        version: 4.23.13
     devDependencies:
       drizzle-kit:
         specifier: ^0.31.4
         version: 0.31.10
-      tsx:
-        specifier: ^4.20.5
-        version: 4.23.13
 
   packages/domain:
     dependencies:

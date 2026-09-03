@@ -70,7 +70,7 @@ Register keys at [api-portal.etoro.com](https://api-portal.etoro.com/).
 | `DEMO_EXECUTION_ENABLED` | server only | Default false. Demo orders require this, `ETORO_ACCOUNT_TYPE=demo`, and `APP_PASSWORD`. Never `NEXT_PUBLIC_` |
 | `DATABASE_URL` | server | Postgres |
 | `REDIS_URL` | server | Redis |
-| `APP_PASSWORD` | server only | Optional. Unset is an insecure local default. When set (min 12), the API and UI require a session. Never `NEXT_PUBLIC_` |
+| `APP_PASSWORD` | server only | Optional locally. Required in production (min 12). Never `NEXT_PUBLIC_` |
 | `TELEGRAM_BOT_TOKEN` | server only | Optional. Never `NEXT_PUBLIC_` |
 | `TELEGRAM_CHAT_ID` | server only | Optional. Never `NEXT_PUBLIC_` |
 
@@ -78,9 +78,22 @@ Register keys at [api-portal.etoro.com](https://api-portal.etoro.com/).
 
 Live-money order placement is forbidden. Demo orders require `ETORO_ACCOUNT_TYPE=demo`, `DEMO_EXECUTION_ENABLED=true`, `APP_PASSWORD`, a Demo user-key probe, preview, and explicit confirm. See `docs/adr/ADR-016-demo-execution-isolation.md`.
 
-Leaving `APP_PASSWORD` empty keeps the local API and UI open. Set it before exposing the API beyond localhost.
+Leaving `APP_PASSWORD` empty keeps the local API and UI open. Set it before exposing the API beyond localhost. Production refuses to start without it.
 
 The Next.js app proxies `/sentinel-api/*` to the Fastify process so session cookies are first-party (`SameSite=Lax`). Do not set `NEXT_PUBLIC_API_BASE_URL` to the API origin unless you also terminate HTTPS and accept a looser cookie policy.
+
+## Production
+
+Private single-user deploy: one GCP VM (Caddy + web + API + worker + Redis) and Supabase Postgres. Do not put the Next.js app on Vercel.
+
+```bash
+cp .env.production.example .env.production
+# fill APP_PASSWORD, eToro keys, Supabase URLs, PUBLIC_HOST
+docker compose --profile migrate -f infra/docker/docker-compose.prod.yml --env-file .env.production run --rm migrate
+docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.production up -d
+```
+
+See `docs/runbooks/deploy.md` and `docs/adr/ADR-018-production-deploy.md`. Never prefix secrets with `NEXT_PUBLIC_`.
 
 ## Strategies
 

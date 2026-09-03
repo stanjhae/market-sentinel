@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasEtoroCredentials, hasTelegramCredentials, parseEnv } from "./env.js";
+import { hasEtoroCredentials, hasTelegramCredentials, parseEnv, withLocalInfraDefaults } from "./env.js";
 
 const validBase = {
   DATABASE_URL: "postgres://sentinel:sentinel@localhost:5432/market_sentinel",
@@ -40,6 +40,44 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...validBase, APP_PASSWORD: "short" })).toThrow();
     expect(parseEnv({ ...validBase, APP_PASSWORD: "correct-horse" }).APP_PASSWORD).toBe("correct-horse");
     expect("NEXT_PUBLIC_APP_PASSWORD" in parseEnv(validBase)).toBe(false);
+  });
+
+  it("requires password and eToro keys in production and keeps local defaults open", () => {
+    expect(() =>
+      parseEnv({
+        ...validBase,
+        NODE_ENV: "production",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseEnv({
+        ...validBase,
+        NODE_ENV: "production",
+        APP_PASSWORD: "correct-horse",
+      }),
+    ).toThrow();
+    const production = parseEnv({
+      ...validBase,
+      NODE_ENV: "production",
+      APP_PASSWORD: "correct-horse",
+      ETORO_API_KEY: "partner-key",
+      ETORO_USER_KEY: "user-key",
+    });
+    expect(production.APP_PASSWORD).toBe("correct-horse");
+    expect(hasEtoroCredentials(production)).toBe(true);
+    expect(parseEnv(validBase).APP_PASSWORD).toBeUndefined();
+  });
+
+  it("applies localhost infra defaults only outside production", () => {
+    const local = withLocalInfraDefaults({ source: { NODE_ENV: "development" } });
+    expect(local.DATABASE_URL).toContain("localhost");
+    expect(local.REDIS_URL).toContain("localhost");
+    const production = withLocalInfraDefaults({
+      source: { NODE_ENV: "production", DATABASE_URL: "postgres://db.example/app" },
+    });
+    expect(production.DATABASE_URL).toBe("postgres://db.example/app");
+    expect(production.REDIS_URL).toBeUndefined();
+    expect(() => parseEnv(withLocalInfraDefaults({ source: { NODE_ENV: "production" } }))).toThrow();
   });
 
   it("treats empty Telegram credentials as missing and never NEXT_PUBLIC", () => {

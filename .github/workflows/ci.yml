@@ -21,3 +21,77 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+
+  images:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate production compose
+        run: docker compose --profile migrate -f infra/docker/docker-compose.prod.yml --env-file .env.production.example config
+      - name: Build api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          target: api
+          tags: market-sentinel/api:ci
+          load: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_ARTIFACT_REGISTRY != '' }}
+          cache-from: type=gha,scope=sentinel
+          cache-to: type=gha,mode=max,scope=sentinel
+      - name: Build worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          target: worker
+          tags: market-sentinel/worker:ci
+          load: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_ARTIFACT_REGISTRY != '' }}
+          cache-from: type=gha,scope=sentinel
+          cache-to: type=gha,mode=max,scope=sentinel
+      - name: Build migrate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          target: migrate
+          tags: market-sentinel/migrate:ci
+          load: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_ARTIFACT_REGISTRY != '' }}
+          cache-from: type=gha,scope=sentinel
+          cache-to: type=gha,mode=max,scope=sentinel
+      - name: Build web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          target: web
+          tags: market-sentinel/web:ci
+          load: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_ARTIFACT_REGISTRY != '' }}
+          cache-from: type=gha,scope=sentinel
+          cache-to: type=gha,mode=max,scope=sentinel
+      - name: Authenticate to Google Cloud
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_ARTIFACT_REGISTRY != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_ARTIFACT_REGISTRY != ''
+        uses: google-github-actions/setup-gcloud@v2
+      - name: Push images
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_ARTIFACT_REGISTRY != ''
+        run: |
+          host="${{ vars.GCP_ARTIFACT_REGISTRY }}"
+          registry="${host%%/*}"
+          gcloud auth configure-docker "${registry}" --quiet
+          tag="${{ github.sha }}"
+          for target in api worker web migrate; do
+            docker tag "market-sentinel/${target}:ci" "${host}/${target}:${tag}"
+            docker tag "market-sentinel/${target}:ci" "${host}/${target}:latest"
+            docker push "${host}/${target}:${tag}"
+            docker push "${host}/${target}:latest"
+          done

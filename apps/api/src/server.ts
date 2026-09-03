@@ -31,6 +31,7 @@ import {
   sessionCookieHeader,
   SESSION_TTL_MS,
   signSession,
+  trustProxySetting,
   verifySession,
 } from "./auth.js";
 import { loadApiEnv } from "./env.js";
@@ -87,7 +88,7 @@ export async function buildServer(args: { env?: Partial<Env>; executionClient?: 
     ...(process.env.NODE_ENV === "test" ? { APP_PASSWORD: undefined } : {}),
     ...args.env,
   };
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, trustProxy: trustProxySetting({ nodeEnv: env.NODE_ENV }) });
   const browserOrigins = allowedBrowserOrigins({ webPort: env.WEB_PORT });
   await app.register(cors, {
     origin: (origin, callback) => {
