@@ -19,9 +19,31 @@ Private single-user production. See [ADR-018](../adr/ADR-018-production-deploy.m
 
 ## 2. GCP VM
 
-1. Create an `e2-small` or `e2-medium` VM (2 GB RAM minimum; 4 GB is more comfortable for Next + worker). Debian or Ubuntu, Docker + Compose plugin installed.
+1. Create an `e2-small` or `e2-medium` VM (2 GB RAM minimum; 4 GB is more comfortable for Next + worker). Ubuntu 22.04. Attach `infra/gce/startup.sh` as the instance startup script so Docker and Compose install on first boot (`chmod 644` on the Docker apt key — `chmod a644` is invalid and the script will abort):
+
+   ```bash
+   gcloud compute instances create market-sentinel \
+     --project=PROJECT \
+     --zone=ZONE \
+     --machine-type=e2-medium \
+     --image-family=ubuntu-2204-lts \
+     --image-project=ubuntu-os-cloud \
+     --boot-disk-size=20GB \
+     --tags=market-sentinel \
+     --metadata-from-file=startup-script=infra/gce/startup.sh
+   ```
+
+   To fix metadata on an existing VM without recreating it:
+
+   ```bash
+   gcloud compute instances add-metadata market-sentinel \
+     --project=PROJECT \
+     --zone=ZONE \
+     --metadata-from-file=startup-script=infra/gce/startup.sh
+   ```
+
 2. Firewall: allow **80/443 from the internet** (Let's Encrypt HTTP-01). Keep **SSH operator-IP-only** (or IAP). Do not publish 3000, 3001, or 6379.
-3. Optional Artifact Registry repo, e.g. `us-central1-docker.pkg.dev/PROJECT/market-sentinel`. Set GitHub Actions variable `GCP_ARTIFACT_REGISTRY` to that prefix and add Workload Identity secrets `GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` so `main` pushes images.
+3. Optional Artifact Registry. Production uses `europe-west1-docker.pkg.dev/stanjhae-sentinel/market-sentinel`. CI on `main` pushes when GitHub variable `GCP_ARTIFACT_REGISTRY` is that prefix and secrets `GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` are set (Workload Identity Federation, not a JSON key).
 
 ## 3. Env file
 

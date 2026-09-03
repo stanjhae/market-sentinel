@@ -25,7 +25,7 @@ BullMQ Queue + Worker run **inside** `apps/worker`. There is no fourth process. 
 Safety:
 
 - Queue and Worker use **separate** ioredis connections (`maxRetriesPerRequest: null`). Stats publish uses the existing app Redis and must not fail the job.
-- Repeatables set `immediately: false` so the first run waits a full interval (startup still calls `syncAccount()` once). Completed/failed jobs keep the last 20/50 records. Worker `lockDuration` is 30 seconds (auto-renewed while the handler runs) so a crashed worker unblocks within one stall interval. Startup removes leftover `active` jobs. Queue stats publish in `finally`.
+- Repeatables set `immediately: false` so the first run waits a full interval (startup still calls `syncAccount()` once). Completed/failed jobs keep the last 20/50 records. Worker `lockDuration` is 30 seconds (auto-renewed while the handler runs) so a crashed worker unblocks within one stall interval. Startup deletes leftover lock keys then removes leftover `active` jobs, and publishes queue stats so `/health/ready` is not stuck on a pre-crash `updatedAt`. Queue stats also publish in `finally`.
 - `execution-reconcile` is scheduled only when `ETORO_ACCOUNT_TYPE=demo` and `DEMO_EXECUTION_ENABLED=true`. It updates only rows still `PENDING`/`AMBIGUOUS`. A close without `positionId` is skipped (never treated as an open).
 
 Queue stats (`depth`, `updatedAt`) are written to `REDIS_KEYS.queueStats`. `/health/ready` surfaces `queueDepth` and `workerLagMs` (`now - updatedAt`) as nullable, non-gating fields. Readiness still uses only database, redis, credentials, and market stream.

@@ -6,12 +6,16 @@ export type ReclaimableJob = {
 
 export type ReclaimableQueue = {
   getJobs: (types: Array<"active" | "wait" | "delayed">) => Promise<ReclaimableJob[]>;
+  unlockJob?: (args: { jobId: string }) => Promise<void>;
 };
 
 export async function reclaimActiveJobs(args: { queue: ReclaimableQueue }): Promise<number> {
   const active = await args.queue.getJobs(["active"]);
   let removed = 0;
   for (const job of active) {
+    if (job.id && args.queue.unlockJob) {
+      await args.queue.unlockJob({ jobId: job.id });
+    }
     try {
       await job.remove();
       removed += 1;

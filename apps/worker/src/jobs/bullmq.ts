@@ -3,6 +3,7 @@ import { createLogger } from "@market-sentinel/observability";
 import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
 import {
+  bullmqLockKey,
   JOB_EVERY_MS,
   JOB_LOCK_DURATION_MS,
   JOB_NAMES,
@@ -102,7 +103,14 @@ export async function startDurableJobs(args: {
     logger.warn({ err: error, jobName: job?.name, jobId: job?.id }, "durable job failed");
   });
 
-  const reclaimed = await reclaimActiveJobs({ queue });
+  const reclaimed = await reclaimActiveJobs({
+    queue: {
+      getJobs: (types) => queue.getJobs(types),
+      unlockJob: async (job) => {
+        await queueConnection.del(bullmqLockKey({ prefix: QUEUE_PREFIX, queueName: QUEUE_NAME, jobId: job.jobId }));
+      },
+    },
+  });
   if (reclaimed > 0) {
     logger.warn({ reclaimed }, "reclaimed leftover active jobs after worker start");
   }
@@ -131,6 +139,17 @@ export async function startDurableJobs(args: {
   } else {
     await queue.removeJobScheduler(JOB_NAMES.executionReconcile);
     await removeJobsByName({ queue, name: JOB_NAMES.executionReconcile });
+  }
+
+  try {
+    const counts = await queue.getJobCounts("wait", "active", "delayed");
+    await publishQueueStats({
+      redis: args.redis,
+      counts,
+      now: () => Date.now(),
+    });
+  } catch (error) {
+    logger.warn({ err: error }, "queue stats skipped on start");
   }
 
   return {
