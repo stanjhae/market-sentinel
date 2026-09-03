@@ -21,6 +21,10 @@ export const JOB_RETENTION = {
 export const JOB_LOCK_DURATION_MS = 30_000;
 export const JOB_STALLED_INTERVAL_MS = 15_000;
 
+export function bullmqLockKey(args: { prefix: string; queueName: string; jobId: string }): string {
+  return `${args.prefix}:${args.queueName}:${args.jobId}:lock`;
+}
+
 export function shouldScheduleExecutionReconcile(args: {
   accountType: "real" | "demo";
   demoExecutionEnabled: boolean;

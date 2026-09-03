@@ -28,7 +28,7 @@ The operator already has GCP, Vercel, and Supabase. ADR-003 keeps the worker off
 
 **Health.** Container and Caddy checks use `/health/live` only. `/sentinel-api/health/ready` requires a session when `APP_PASSWORD` is set so stream/credential details are not public. Ready must not restart the API on boot.
 
-**Images.** One Dockerfile with targets `api`, `worker`, `web`, `migrate`. CI builds them after verify. Push to Artifact Registry only when `GCP_ARTIFACT_REGISTRY` is set on `main`.
+**Images.** One Dockerfile with targets `api`, `worker`, `web`, `migrate`. CI builds them after verify. Push to Artifact Registry only when `GCP_ARTIFACT_REGISTRY` is set on `main` (Workload Identity Federation; no JSON key). A new VM uses `infra/gce/startup.sh` (`chmod 644` on the Docker apt key).
 
 **Demo.** `DEMO_EXECUTION_ENABLED` stays false unless deliberately enabled with `ETORO_ACCOUNT_TYPE=demo`. Live-money execution stays forbidden.
 

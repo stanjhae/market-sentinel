@@ -318,21 +318,6 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
     JSON.stringify({ streamStatus: "DELAYED", lastQuoteAt: null, reconnectCount: 0 }),
   );
 
-  void syncAccount();
-  await backfill();
-  if (resolvedIds.length > 0) {
-    stream.start(resolvedIds);
-  }
-  const forceTimer = setInterval(() => {
-    void (async () => {
-      const force = await redis.get(REDIS_KEYS.forceAccountSync);
-      if (!force) {
-        return;
-      }
-      await redis.del(REDIS_KEYS.forceAccountSync);
-      await syncAccount({ force: true });
-    })();
-  }, 2_000);
   const durable = await startDurableJobs({
     env,
     redis,
@@ -375,6 +360,21 @@ export async function startMarketWorker(env: Env): Promise<{ stop: () => Promise
     },
   });
   enqueueAccountSync = durable.enqueueAccountSync;
+  void syncAccount();
+  await backfill();
+  if (resolvedIds.length > 0) {
+    stream.start(resolvedIds);
+  }
+  const forceTimer = setInterval(() => {
+    void (async () => {
+      const force = await redis.get(REDIS_KEYS.forceAccountSync);
+      if (!force) {
+        return;
+      }
+      await redis.del(REDIS_KEYS.forceAccountSync);
+      await syncAccount({ force: true });
+    })();
+  }, 2_000);
 
   return {
     stop: async () => {

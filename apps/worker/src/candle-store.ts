@@ -102,21 +102,37 @@ export async function upsertCandle(args: {
   const next: Candle = { ...args.incoming, revision: decision.revision };
 
   if (decision.action === "insert") {
-    await args.db.insert(candles).values({
-      id: randomUUID(),
-      instrumentId: next.instrumentId,
-      timeframe: next.timeframe,
-      openTimeUtc: next.openTimeUtc,
-      closeTimeUtc: next.closeTimeUtc,
-      open: next.open,
-      high: next.high,
-      low: next.low,
-      close: next.close,
-      volume: next.volume,
-      source: next.source,
-      isFinal: next.isFinal,
-      revision: next.revision,
-    });
+    await args.db
+      .insert(candles)
+      .values({
+        id: randomUUID(),
+        instrumentId: next.instrumentId,
+        timeframe: next.timeframe,
+        openTimeUtc: next.openTimeUtc,
+        closeTimeUtc: next.closeTimeUtc,
+        open: next.open,
+        high: next.high,
+        low: next.low,
+        close: next.close,
+        volume: next.volume,
+        source: next.source,
+        isFinal: next.isFinal,
+        revision: next.revision,
+      })
+      .onConflictDoUpdate({
+        target: [candles.instrumentId, candles.timeframe, candles.openTimeUtc],
+        set: {
+          closeTimeUtc: next.closeTimeUtc,
+          open: next.open,
+          high: next.high,
+          low: next.low,
+          close: next.close,
+          volume: next.volume,
+          source: next.source,
+          isFinal: next.isFinal,
+          revision: next.revision,
+        },
+      });
   } else if (decision.action === "update" || decision.action === "revise") {
     await args.db
       .update(candles)

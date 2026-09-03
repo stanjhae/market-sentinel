@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import { reclaimActiveJobs, removeJobsByName } from "./reclaim-jobs.js";
 
 describe("reclaimActiveJobs", () => {
-  it("removes leftover active jobs after a worker crash", async () => {
+  it("unlocks leftover active jobs before remove so a held lock cannot block concurrency 1", async () => {
     const removed: string[] = [];
+    const unlocked: string[] = [];
     const kept = { id: "keep", name: "account-sync", remove: async () => undefined };
     await expect(
       reclaimActiveJobs({
         queue: {
+          unlockJob: async (job) => {
+            unlocked.push(job.jobId);
+          },
           getJobs: async () => [
             {
               id: "zombie",
@@ -21,6 +25,7 @@ describe("reclaimActiveJobs", () => {
         },
       }),
     ).resolves.toBe(2);
+    expect(unlocked).toEqual(["zombie", "keep"]);
     expect(removed).toEqual(["zombie"]);
   });
 });
