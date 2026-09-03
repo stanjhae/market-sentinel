@@ -13,6 +13,8 @@ import {
   SESSION_COOKIE_NAME,
   sessionCookieHeader,
   signSession,
+  isTrustedProxyHop,
+  trustProxySetting,
   verifySession,
 } from "./auth.js";
 import { buildServer } from "./server.js";
@@ -57,6 +59,14 @@ describe("session helpers", () => {
     expect(clearSessionCookieHeader({ secure: false })).toContain("Max-Age=0");
     expect(requestIsHttps({ protocol: "https" })).toBe(true);
     expect(requestIsHttps({ protocol: "http", forwardedProto: "https" })).toBe(true);
+  });
+
+  it("trusts a single proxy hop only in production", () => {
+    expect(trustProxySetting({ nodeEnv: "development" })).toBe(false);
+    expect(trustProxySetting({ nodeEnv: "test" })).toBe(false);
+    expect(isTrustedProxyHop({ hop: 0 })).toBe(true);
+    expect(isTrustedProxyHop({ hop: 1 })).toBe(false);
+    expect(typeof trustProxySetting({ nodeEnv: "production" })).toBe("function");
   });
 
   it("allowlists only the local web origins", () => {
@@ -165,6 +175,15 @@ describe("app password gate", () => {
       headers: { cookie: sessionPair },
     });
     expect(account.statusCode).not.toBe(401);
+    expect(cookieHeader).not.toContain("Secure");
+
+    const httpsLogin = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { password },
+      headers: { "x-forwarded-proto": "https" },
+    });
+    expect(String(httpsLogin.headers["set-cookie"])).toContain("Secure");
 
     const logout = await app.inject({ method: "POST", url: "/auth/logout" });
     expect(logout.statusCode).toBe(200);

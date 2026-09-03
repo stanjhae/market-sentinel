@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { postgresSslOption, shouldRequireSsl } from "./client.js";
 import { instruments, auditLogs, candles, indicatorSnapshots, pivots, priceZones, marketRegimes, signals, alerts, appSettings, journalEntries, backtestRuns, brokerOrders } from "./schema.js";
 
 describe("schema", () => {
@@ -16,5 +17,44 @@ describe("schema", () => {
     expect(journalEntries).toBeDefined();
     expect(backtestRuns).toBeDefined();
     expect(brokerOrders).toBeDefined();
+  });
+
+  it("requires TLS in production unless sslmode=disable", () => {
+    expect(
+      shouldRequireSsl({
+        connectionString: "postgres://sentinel@db.example:5432/app",
+        nodeEnv: "production",
+      }),
+    ).toBe(true);
+    expect(
+      shouldRequireSsl({
+        connectionString: "postgres://sentinel@localhost:5432/app",
+        nodeEnv: "test",
+      }),
+    ).toBe(false);
+    expect(
+      shouldRequireSsl({
+        connectionString: "postgres://sentinel@db.example:5432/app?sslmode=require",
+        nodeEnv: "development",
+      }),
+    ).toBe(true);
+    expect(
+      shouldRequireSsl({
+        connectionString: "postgres://sentinel@db.example:5432/app?sslmode=disable",
+        nodeEnv: "production",
+      }),
+    ).toBe(false);
+    expect(
+      postgresSslOption({
+        connectionString: "postgres://sentinel@db.example:5432/app",
+        nodeEnv: "production",
+      }),
+    ).toBe(true);
+    expect(
+      postgresSslOption({
+        connectionString: "postgres://sentinel@localhost:5432/app",
+        nodeEnv: "test",
+      }),
+    ).toBeUndefined();
   });
 });

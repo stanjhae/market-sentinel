@@ -36,6 +36,19 @@ export function normalizeRequestPath(args: { url: string }): string {
   return `/${parts.join("/")}`;
 }
 
+export function isTrustedProxyHop(args: { hop: number }): boolean {
+  return args.hop < 1;
+}
+
+export function trustProxySetting(args: {
+  nodeEnv: "development" | "test" | "production";
+}): false | ((address: string, hop: number) => boolean) {
+  if (args.nodeEnv !== "production") {
+    return false;
+  }
+  return (_address, hop) => isTrustedProxyHop({ hop });
+}
+
 export function isPublicRoute(args: { url: string; method: string }): boolean {
   if (args.method === "OPTIONS") {
     return true;

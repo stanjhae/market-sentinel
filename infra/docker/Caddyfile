@@ -1,0 +1,24 @@
+{
+	email {$ACME_EMAIL:}
+}
+
+{$PUBLIC_HOST} {
+	handle /sentinel-api/* {
+		uri strip_prefix /sentinel-api
+		reverse_proxy api:3001 {
+			flush_interval -1
+			transport http {
+				read_timeout 0
+				write_timeout 0
+			}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-For {remote_host}
+			header_up Host {host}
+		}
+	}
+
+	handle {
+		encode gzip
+		reverse_proxy web:3000
+	}
+}
