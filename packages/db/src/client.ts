@@ -27,9 +27,15 @@ export function postgresSslOption(args: {
   return true;
 }
 
+export function postgresPrepareEnabled(args: { connectionString: string }): boolean {
+  const host = args.connectionString.split("?")[0] ?? "";
+  return !/:6543(?:\/|$)/.test(host);
+}
+
 export function createDb(connectionString: string, args: { nodeEnv?: string } = {}) {
   const client = postgres(connectionString, {
     max: 4,
+    prepare: postgresPrepareEnabled({ connectionString }),
     ssl: postgresSslOption({
       connectionString,
       nodeEnv: args.nodeEnv ?? process.env.NODE_ENV,

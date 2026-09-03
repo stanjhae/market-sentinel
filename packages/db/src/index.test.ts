@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { postgresSslOption, shouldRequireSsl } from "./client.js";
+import { postgresPrepareEnabled, postgresSslOption, shouldRequireSsl } from "./client.js";
 import { instruments, auditLogs, candles, indicatorSnapshots, pivots, priceZones, marketRegimes, signals, alerts, appSettings, journalEntries, backtestRuns, brokerOrders } from "./schema.js";
 
 describe("schema", () => {
@@ -62,5 +62,15 @@ describe("schema", () => {
         nodeEnv: "production",
       }),
     ).toEqual({ rejectUnauthorized: false });
+    expect(
+      postgresPrepareEnabled({
+        connectionString: "postgres://postgres.proj@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require",
+      }),
+    ).toBe(false);
+    expect(
+      postgresPrepareEnabled({
+        connectionString: "postgres://postgres.proj@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require",
+      }),
+    ).toBe(true);
   });
 });
